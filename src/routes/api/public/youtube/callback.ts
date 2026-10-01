@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { handleIntegrationCallback } from "../integrations/callback";
+import { handleIntegrationCallback } from "@/lib/integrations/callback.server";
 
 export const Route = createFileRoute("/api/public/youtube/callback")({
   server: {
