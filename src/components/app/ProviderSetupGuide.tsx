@@ -10,7 +10,7 @@ import {
   startIntegrationOAuth,
   testIntegration,
 } from "@/lib/integrations.functions";
-import type { IntegrationDefinition } from "@/lib/integrations/registry";
+import { integrationRedirectUri, type IntegrationDefinition } from "@/lib/integrations/registry";
 import { isGoogleOAuthProvider, useGoogleDisclosure } from "@/components/legal/GoogleDisclosureDialog";
 import { GOOGLE_DISCLOSURE_VERSION } from "@/lib/legal";
 
@@ -137,8 +137,7 @@ export function ProviderSetupGuide({
   const startFn = useServerFn(startIntegrationOAuth);
 
   const consoleSteps = CONSOLE_STEPS[definition.id] ?? genericSteps(definition);
-  const redirectUri =
-    typeof window === "undefined" ? "" : `${window.location.origin}/api/public/integrations/callback`;
+  const redirectUri = integrationRedirectUri(typeof window === "undefined" ? "" : window.location.origin, definition.id);
   const savedAccount = (accountRef ?? "").trim();
 
   const applyTest = (test: { ok: boolean; message: string }) => {

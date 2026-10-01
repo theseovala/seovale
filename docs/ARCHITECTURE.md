@@ -88,7 +88,7 @@ Credential vault: `integration_provider_credentials` — AES-GCM encrypted per f
 
 ## 5. OAuth flow
 
-`startIntegrationOAuth` → encrypted state + PKCE verifier stored server-side → provider consent → `/api/public/integrations/callback` → state hash check → token exchange → encrypted token storage → live API call to verify. Refresh happens transparently before any authenticated call; expiry without a refresh token marks the connection `expired`.
+`startIntegrationOAuth` → encrypted state + PKCE verifier stored server-side → provider consent → callback → state hash check → token exchange → encrypted token storage → live API call to verify. YouTube uses the registered `/api/public/youtube/callback`; other third-party integrations use `/api/public/integrations/callback`. Refresh happens transparently before any authenticated call; expiry without a refresh token marks the connection `expired`.
 
 ## 6. Webhook flow
 

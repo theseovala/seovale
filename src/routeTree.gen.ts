@@ -40,6 +40,7 @@ import { Route as ApiPublicLicenseActivateRouteImport } from './routes/api/publi
 import { Route as ApiPublicLicenseDownloadRouteImport } from './routes/api/public/license/download'
 import { Route as ApiPublicLicenseUpdateCheckRouteImport } from './routes/api/public/license/update-check'
 import { Route as ApiPublicLicenseValidateRouteImport } from './routes/api/public/license/validate'
+import { Route as ApiPublicYoutubeCallbackRouteImport } from './routes/api/public/youtube/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -205,6 +206,12 @@ const ApiPublicLicenseValidateRoute =
     path: '/api/public/license/validate',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicYoutubeCallbackRoute =
+  ApiPublicYoutubeCallbackRouteImport.update({
+    id: '/api/public/youtube/callback',
+    path: '/api/public/youtube/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -237,6 +244,7 @@ export interface FileRoutesByFullPath {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -269,6 +277,7 @@ export interface FileRoutesByTo {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -303,6 +312,7 @@ export interface FileRoutesById {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
+    | '/api/public/youtube/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -369,6 +380,7 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
+    | '/api/public/youtube/callback'
   id:
     | '__root__'
     | '/'
@@ -402,6 +414,7 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
+    | '/api/public/youtube/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -420,6 +433,7 @@ export interface RootRouteChildren {
   ApiPublicLicenseDownloadRoute: typeof ApiPublicLicenseDownloadRoute
   ApiPublicLicenseUpdateCheckRoute: typeof ApiPublicLicenseUpdateCheckRoute
   ApiPublicLicenseValidateRoute: typeof ApiPublicLicenseValidateRoute
+  ApiPublicYoutubeCallbackRoute: typeof ApiPublicYoutubeCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -641,6 +655,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLicenseValidateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/youtube/callback': {
+      id: '/api/public/youtube/callback'
+      path: '/api/public/youtube/callback'
+      fullPath: '/api/public/youtube/callback'
+      preLoaderRoute: typeof ApiPublicYoutubeCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -701,6 +722,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicLicenseDownloadRoute: ApiPublicLicenseDownloadRoute,
   ApiPublicLicenseUpdateCheckRoute: ApiPublicLicenseUpdateCheckRoute,
   ApiPublicLicenseValidateRoute: ApiPublicLicenseValidateRoute,
+  ApiPublicYoutubeCallbackRoute: ApiPublicYoutubeCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

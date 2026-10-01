@@ -18,7 +18,7 @@ import {
   startIntegrationOAuth,
   testIntegration,
 } from "@/lib/integrations.functions";
-import type { IntegrationDefinition } from "@/lib/integrations/registry";
+import { integrationRedirectUri, type IntegrationDefinition } from "@/lib/integrations/registry";
 
 import {
   integrationStatusLabel as statusLabel,
@@ -126,10 +126,11 @@ function CredentialPanel({
   const saveCredsFn = useServerFn(saveProviderCredentials);
   const revokeCredsFn = useServerFn(revokeProviderCredentials);
 
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
   const redirectUri =
     definition.kind === "managed"
-      ? `${typeof window === "undefined" ? "" : window.location.origin}/api/public/google-business/callback`
-      : `${typeof window === "undefined" ? "" : window.location.origin}/api/public/integrations/callback`;
+      ? `${origin}/api/public/google-business/callback`
+      : integrationRedirectUri(origin, definition.id);
 
   const saveCreds = useMutation({
     mutationFn: () => saveCredsFn({ data: { provider: definition.id, values } }),

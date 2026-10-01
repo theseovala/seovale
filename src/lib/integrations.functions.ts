@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { INTEGRATIONS, credentialGroupOf, integrationById } from "@/lib/integrations/registry";
+import { INTEGRATIONS, credentialGroupOf, integrationById, integrationRedirectUri } from "@/lib/integrations/registry";
 import type { TestResult } from "@/lib/integrations/providers.server";
 
 type Ctx = { supabase: any; userId: string };
@@ -204,7 +204,7 @@ export const startIntegrationOAuth = createServerFn({ method: "POST" })
     const { encryptValue, hashState, pkce, randomToken } = await import("@/lib/integrations/crypto.server");
     const origin = assertAllowedOrigin(data.origin);
     const callbackOrigin = googleCallbackOrigin(origin);
-    const redirectUri = `${callbackOrigin}/api/public/integrations/callback`;
+    const redirectUri = integrationRedirectUri(callbackOrigin, data.provider);
     const state = randomToken();
     const challenge = definition.id in { google_gmail: 1, youtube: 1, twitter: 1, pinterest: 1 } ? pkce() : null;
     const codes = challenge ?? { verifier: null, challenge: null };

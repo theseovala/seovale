@@ -589,6 +589,9 @@ export const integrationById = (id: string) => INTEGRATIONS.find((i) => i.id ===
 
 export const credentialGroupOf = (id: string) => integrationById(id)?.credentialGroup ?? id;
 
+export const integrationRedirectUri = (origin: string, providerId: string) =>
+  `${origin}${providerId === "youtube" ? "/api/public/youtube/callback" : "/api/public/integrations/callback"}`;
+
 export type IntegrationStatus = "connected" | "disconnected" | "error" | "expired" | "unavailable";
 
 /** Standardized live-test outcome codes (never converted into fake success). */

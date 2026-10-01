@@ -2,10 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 // Shared OAuth callback for every third-party integration. Tokens are exchanged
 // server-side, encrypted and stored; nothing sensitive is ever put in the redirect.
-export const Route = createFileRoute("/api/public/integrations/callback")({
-  server: {
-    handlers: {
-      GET: async ({ request }) => {
+export const handleIntegrationCallback = async ({ request }: { request: Request }) => {
         const url = new URL(request.url);
         const state = url.searchParams.get("state");
         const code = url.searchParams.get("code");
@@ -92,7 +89,12 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
           await log("error", caught instanceof Error ? caught.message : "Authorization failed.", "oauth_failed");
           return back("error");
         }
-      },
+};
+
+export const Route = createFileRoute("/api/public/integrations/callback")({
+  server: {
+    handlers: {
+      GET: handleIntegrationCallback,
     },
   },
 });
