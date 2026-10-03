@@ -268,6 +268,7 @@ export function IntegrationManager() {
     if (!provider || !status) return;
     const label = integrationById(provider)?.label ?? provider;
     if (status === "connected") toast.success(`${label} connected and verified`);
+    else if (status === "cancelled") toast.info(`${label} connection cancelled. No changes were made.`);
     else toast.error(`${label} could not be connected — see the activity log below`);
     window.history.replaceState({}, "", window.location.pathname);
     void queryClient.invalidateQueries({ queryKey: ["integrations"] });

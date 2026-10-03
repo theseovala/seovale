@@ -13,6 +13,9 @@ describe("integration redirect URIs", () => {
     expect(integrationRedirectUri("https://seovale.com", "google_gmail")).toBe(
       "https://seovale.com/api/public/integrations/callback",
     );
+    expect(integrationRedirectUri("https://seovale.com", "instagram")).toBe(
+      "https://seovale.com/api/public/integrations/callback",
+    );
   });
 
   test("callback handler rejects requests without OAuth state", async () => {

@@ -29,7 +29,7 @@ export interface IntegrationDefinition {
   manualReason?: string;
   /**
    * Vault bucket the credentials are stored under. Providers that share one
-   * developer application (Gmail + YouTube, Facebook + Instagram) share a group.
+   * developer application (Gmail + YouTube, Facebook Page + Meta Business) share a group.
    */
   credentialGroup?: string;
   /** Provider-specific credential schema shown in the configuration panel. */
@@ -58,6 +58,11 @@ const META_FIELDS: CredentialField[] = [
     secret: true,
     hint: "Any string you choose; enter the same value as the Verify Token in the Meta app's Webhooks settings.",
   },
+];
+
+const INSTAGRAM_FIELDS: CredentialField[] = [
+  { key: "INSTAGRAM_APP_ID", label: "Instagram App ID", secret: false },
+  { key: "INSTAGRAM_APP_SECRET", label: "Instagram App secret", secret: true },
 ];
 
 export const INTEGRATIONS: IntegrationDefinition[] = [
@@ -182,13 +187,18 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: "instagram",
     group: "Meta",
     label: "Instagram professional account",
-    description: "Comments and mentions on the linked business account.",
+    description: "Instagram professional account, comments and messaging.",
     kind: "oauth2",
-    requiredSecrets: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
-    scopes: ["instagram_basic", "instagram_manage_comments", "pages_show_list", "business_management"],
-    docsUrl: "https://developers.facebook.com/docs/instagram-api/",
-    credentialGroup: "meta",
-    credentialFields: META_FIELDS,
+    requiredSecrets: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
+    scopes: [
+      "instagram_business_basic",
+      "instagram_business_manage_comments",
+      "instagram_business_manage_messages",
+    ],
+    docsUrl:
+      "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login/",
+    credentialGroup: "instagram",
+    credentialFields: INSTAGRAM_FIELDS,
   },
   {
     id: "whatsapp",

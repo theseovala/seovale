@@ -29,6 +29,8 @@ const TOUCHED_ENV = [
   "TWITTER_BEARER_TOKEN",
   "GOOGLE_ADS_DEVELOPER_TOKEN",
   "FACEBOOK_APP_SECRET",
+  "INSTAGRAM_APP_ID",
+  "INSTAGRAM_APP_SECRET",
 ];
 let savedEnv: Record<string, string | undefined> = {};
 const realFetch = globalThis.fetch;
@@ -93,7 +95,7 @@ describe("registry — every requested credential field is UI-configurable", () 
     anthropic: ["ANTHROPIC_API_KEY"],
     dataforseo: ["DATAFORSEO_LOGIN", "DATAFORSEO_PASSWORD"],
     facebook: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN"],
-    instagram: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
+    instagram: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
     meta_business: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
     moz: ["MOZ_ACCESS_ID", "MOZ_SECRET_KEY"],
     openai: ["OPENAI_API_KEY"],
@@ -124,7 +126,18 @@ describe("registry — every requested credential field is UI-configurable", () 
   }
 
   test("secret-bearing fields are masked (secret: true)", () => {
-    const secretKeys = ["FACEBOOK_APP_SECRET", "RAZORPAY_WEBHOOK_SECRET", "STRIPE_SECRET_KEY", "TWILIO_API_KEY_SECRET", "TWITTER_BEARER_TOKEN", "TWITTER_CONSUMER_SECRET", "WHATSAPP_WEBHOOK_VERIFY_TOKEN", "TRUSTPILOT_API_SECRET", "OPENAI_API_KEY"];
+    const secretKeys = [
+      "FACEBOOK_APP_SECRET",
+      "INSTAGRAM_APP_SECRET",
+      "RAZORPAY_WEBHOOK_SECRET",
+      "STRIPE_SECRET_KEY",
+      "TWILIO_API_KEY_SECRET",
+      "TWITTER_BEARER_TOKEN",
+      "TWITTER_CONSUMER_SECRET",
+      "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+      "TRUSTPILOT_API_SECRET",
+      "OPENAI_API_KEY",
+    ];
     const all = INTEGRATIONS.flatMap((d) => d.credentialFields ?? []);
     for (const key of secretKeys) expect(all.filter((f) => f.key === key).every((f) => f.secret)).toBe(true);
   });

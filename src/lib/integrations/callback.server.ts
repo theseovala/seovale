@@ -42,15 +42,19 @@ export async function handleIntegrationCallback(request: Request) {
     });
 
   if (providerError || !code) {
+    const cancelled = providerError === "access_denied";
     await log(
-      "error",
-      `Provider rejected authorization: ${providerError ?? "no code returned"}`,
-      "oauth_failed",
+      cancelled ? "info" : "error",
+      cancelled
+        ? "Authorization was cancelled by the user."
+        : "Provider rejected authorization or returned no authorization code.",
+      cancelled ? "oauth_cancelled" : "oauth_failed",
     );
-    return back("error");
+    return back(cancelled ? "cancelled" : "error");
   }
 
   try {
+    if (code.length > 4096) throw new Error("Authorization code is invalid.");
     const payload = JSON.parse(await decryptValue(saved.payload_ciphertext)) as {
       verifier: string | null;
       redirectUri: string;
@@ -68,7 +72,18 @@ export async function handleIntegrationCallback(request: Request) {
 
     let accessToken = tokens.accessToken;
     let expiresIn = tokens.expiresIn;
-    if (saved.provider === "facebook" || saved.provider === "instagram") {
+    if (saved.provider === "instagram") {
+      const definition = (await import("@/lib/integrations/registry")).integrationById("instagram");
+      const missingScopes = (definition?.scopes ?? []).filter(
+        (scope) => !tokens.scopes.includes(scope),
+      );
+      if (missingScopes.length > 0) {
+        throw new Error("Instagram did not grant all requested business permissions.");
+      }
+      const longLived = await providers.exchangeInstagramLongLivedToken(accessToken, creds);
+      accessToken = longLived.accessToken;
+      expiresIn = longLived.expiresIn;
+    } else if (saved.provider === "facebook") {
       const longLived = await providers.exchangeMetaLongLivedToken(accessToken, creds);
       if (longLived) {
         accessToken = longLived.accessToken;
@@ -115,11 +130,18 @@ export async function handleIntegrationCallback(request: Request) {
     );
     return back(test.ok ? "connected" : "error");
   } catch (caught) {
-    await log(
-      "error",
-      caught instanceof Error ? caught.message : "Authorization failed.",
-      "oauth_failed",
-    );
+    const message =
+      saved.provider === "instagram"
+        ? caught instanceof Error &&
+          /Instagram application credentials are not configured|Instagram did not grant all requested business permissions|Instagram (?:authorization-code|long-lived token) exchange failed \(HTTP \d+\)\./.test(
+            caught.message,
+          )
+          ? caught.message
+          : "Instagram authorization failed. Check the app settings and granted permissions, then try again."
+        : caught instanceof Error
+          ? caught.message
+          : "Authorization failed.";
+    await log("error", message, "oauth_failed");
     return back("error");
   }
 }

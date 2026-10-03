@@ -26,6 +26,7 @@ export interface OAuthProviderConfig {
   clientSecretEnv: string[];
   usePkce: boolean;
   tokenAuth: "basic" | "body";
+  scopeSeparator?: "," | " ";
   extraAuthParams?: Record<string, string>;
   headers?: Record<string, string>;
   /** `creds` is the workspace's vault bag, for tests that need an extra credential (e.g. a developer token). */
@@ -100,6 +101,31 @@ function failure(response: Response, payload: Record<string, any>): TestResult {
   };
 }
 
+function instagramFailure(
+  status: number,
+  capability: "profile" | "media" | "comments" | "messaging",
+): TestResult {
+  const code: TestOutcomeCode =
+    status === 401
+      ? "AUTHENTICATION_FAILED"
+      : status === 403
+        ? "INSUFFICIENT_SCOPE"
+        : status === 429
+          ? "RATE_LIMITED"
+          : "PROVIDER_ERROR";
+  const message =
+    status === 401
+      ? "Instagram authorization expired or was revoked. Reconnect the account."
+      : status === 403 && capability === "comments"
+        ? "Instagram denied comments access. Check instagram_business_manage_comments and app access."
+        : status === 403 && capability === "messaging"
+          ? "Instagram denied messaging access. Check instagram_business_manage_messages and app access."
+          : status === 403
+            ? "Instagram denied profile/media access. Check instagram_business_basic and app access."
+            : `Instagram ${capability} API request failed (HTTP ${status}).`;
+  return { ok: false, status, message, code };
+}
+
 async function googleTest(url: string, accessToken: string, pick: (p: Record<string, any>) => { label?: string | null; ref?: string | null }) {
   const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   const payload = await readJson(response);
@@ -171,23 +197,80 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     },
   },
   instagram: {
-    authUrl: "https://www.facebook.com/v21.0/dialog/oauth",
-    tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
-    clientIdEnv: ["FACEBOOK_APP_ID"],
-    clientSecretEnv: ["FACEBOOK_APP_SECRET"],
+    authUrl: "https://www.instagram.com/oauth/authorize",
+    tokenUrl: "https://api.instagram.com/oauth/access_token",
+    clientIdEnv: ["INSTAGRAM_APP_ID"],
+    clientSecretEnv: ["INSTAGRAM_APP_SECRET"],
     usePkce: false,
     tokenAuth: "body",
+    scopeSeparator: ",",
     test: async (token) => {
-      const response = await fetch(
-        `https://graph.facebook.com/v21.0/me/accounts?fields=instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}`,
-      );
-      const payload = await readJson(response);
-      if (!response.ok) return failure(response, payload);
-      const linked = (payload["data"] ?? []).map((row: Record<string, any>) => row["instagram_business_account"]).find(Boolean);
-      if (!linked) {
-        return { ok: false, status: response.status, message: "No Instagram professional account is linked to the authorized Facebook Page." };
+      try {
+        const request = (url: string) =>
+          fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const accountResponse = await request(
+          "https://graph.instagram.com/v25.0/me?fields=user_id,username",
+        );
+        const payload = await readJson(accountResponse);
+        if (!accountResponse.ok) {
+          return instagramFailure(accountResponse.status, "profile");
+        }
+        const account = Array.isArray(payload["data"]) ? payload["data"][0] : payload;
+        const userId = account?.["user_id"] ?? account?.["id"];
+        if (typeof userId !== "string" && typeof userId !== "number") {
+          return {
+            ok: false,
+            status: accountResponse.status,
+            message: "Instagram returned no account ID.",
+            code: "PROVIDER_ERROR",
+          };
+        }
+
+        const mediaResponse = await request(
+          `https://graph.instagram.com/v25.0/${encodeURIComponent(String(userId))}/media?fields=id&limit=1`,
+        );
+        if (!mediaResponse.ok) {
+          return instagramFailure(mediaResponse.status, "media");
+        }
+        const mediaPayload = await readJson(mediaResponse);
+        const mediaId = mediaPayload["data"]?.[0]?.["id"];
+        if (typeof mediaId === "string") {
+          const commentsResponse = await request(
+            `https://graph.instagram.com/v25.0/${encodeURIComponent(mediaId)}/comments?fields=id&limit=1`,
+          );
+          if (!commentsResponse.ok) {
+            return instagramFailure(commentsResponse.status, "comments");
+          }
+          await readJson(commentsResponse);
+        }
+
+        const messagesResponse = await request(
+          "https://graph.instagram.com/v25.0/me/conversations?platform=instagram&limit=1",
+        );
+        if (!messagesResponse.ok) {
+          return instagramFailure(messagesResponse.status, "messaging");
+        }
+        await readJson(messagesResponse);
+
+        return {
+          ok: true,
+          status: accountResponse.status,
+          message:
+            typeof mediaId === "string"
+              ? "Instagram account, comments and messaging APIs verified."
+              : "Instagram account and messaging APIs verified. Comment access could not be tested because the account has no media.",
+          label: typeof account?.["username"] === "string" ? account["username"] : null,
+          accountRef: String(userId),
+          code: "CONNECTED",
+        };
+      } catch {
+        return {
+          ok: false,
+          status: 0,
+          message: "Instagram profile verification could not reach Meta.",
+          code: "PROVIDER_ERROR",
+        };
       }
-      return { ok: true, status: response.status, message: "Live Graph API call succeeded.", label: linked["username"] ?? null, accountRef: linked["id"] };
     },
   },
   reddit: {
@@ -327,7 +410,7 @@ export function buildAuthorizationUrl(providerId: string, redirectUri: string, s
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", definition.scopes.join(" "));
+  url.searchParams.set("scope", definition.scopes.join(config.scopeSeparator ?? " "));
   url.searchParams.set("state", state);
   for (const [k, v] of Object.entries(config.extraAuthParams ?? {})) url.searchParams.set(k, v);
   if (config.usePkce && challenge) {
@@ -365,14 +448,126 @@ async function tokenRequest(providerId: string, body: URLSearchParams, creds: Cr
   };
 }
 
-export function exchangeCode(providerId: string, code: string, verifier: string | null, redirectUri: string, creds: CredentialBag = {}) {
-  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
+export function exchangeCode(
+  providerId: string,
+  code: string,
+  verifier: string | null,
+  redirectUri: string,
+  creds: CredentialBag = {},
+) {
+  if (providerId === "instagram") {
+    return exchangeInstagramCode(code, redirectUri, creds);
+  }
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri,
+  });
   if (verifier) body.set("code_verifier", verifier);
   return tokenRequest(providerId, body, creds);
 }
 
-export function refreshAccessToken(providerId: string, refreshToken: string, creds: CredentialBag = {}) {
-  return tokenRequest(providerId, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }), creds);
+async function exchangeInstagramCode(code: string, redirectUri: string, creds: CredentialBag) {
+  const clientId = envValue(["INSTAGRAM_APP_ID"], creds);
+  const clientSecret = envValue(["INSTAGRAM_APP_SECRET"], creds);
+  if (!clientId || !clientSecret)
+    throw new Error("Instagram application credentials are not configured.");
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code,
+  });
+  const response = await fetch("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  const payload = await readJson(response);
+  const data = Array.isArray(payload["data"]) ? payload["data"][0] : payload;
+  if (!response.ok || typeof data?.["access_token"] !== "string" || !data["access_token"]) {
+    throw new Error(`Instagram authorization-code exchange failed (HTTP ${response.status}).`);
+  }
+
+  const permissions = data["permissions"];
+  const scopes = Array.isArray(permissions)
+    ? permissions.filter(
+        (permission: unknown): permission is string => typeof permission === "string",
+      )
+    : typeof permissions === "string"
+      ? permissions.split(/[,\s]+/).filter(Boolean)
+      : typeof payload["scope"] === "string"
+        ? payload["scope"].split(/[,\s]+/).filter(Boolean)
+        : [];
+  return {
+    accessToken: data["access_token"] as string,
+    refreshToken: null,
+    expiresIn: typeof data["expires_in"] === "number" ? data["expires_in"] : 3600,
+    scopes,
+    accountId: data["user_id"] == null ? null : String(data["user_id"]),
+  };
+}
+
+export function refreshAccessToken(
+  providerId: string,
+  refreshToken: string,
+  creds: CredentialBag = {},
+) {
+  if (providerId === "instagram") {
+    return refreshInstagramToken(refreshToken);
+  }
+  return tokenRequest(
+    providerId,
+    new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
+    creds,
+  );
+}
+
+async function refreshInstagramToken(accessToken: string) {
+  const url = new URL("https://graph.instagram.com/refresh_access_token");
+  url.searchParams.set("grant_type", "ig_refresh_token");
+  url.searchParams.set("access_token", accessToken);
+  const response = await fetch(url.toString());
+  const payload = await readJson(response);
+  if (!response.ok || typeof payload["access_token"] !== "string") {
+    throw new Error(`Instagram token refresh failed (HTTP ${response.status}).`);
+  }
+  if (typeof payload["expires_in"] !== "number" || payload["expires_in"] <= 0) {
+    throw new Error("Instagram token refresh returned no valid expiration.");
+  }
+  return {
+    accessToken: payload["access_token"] as string,
+    refreshToken: null,
+    expiresIn: payload["expires_in"],
+    scopes: [],
+  };
+}
+
+/** Instagram Login tokens are exchanged separately from Facebook Login tokens. */
+export async function exchangeInstagramLongLivedToken(
+  shortLivedToken: string,
+  creds: CredentialBag = {},
+) {
+  const clientSecret = envValue(["INSTAGRAM_APP_SECRET"], creds);
+  if (!clientSecret) throw new Error("Instagram application credentials are not configured.");
+  const url = new URL("https://graph.instagram.com/access_token");
+  url.searchParams.set("grant_type", "ig_exchange_token");
+  url.searchParams.set("client_secret", clientSecret);
+  url.searchParams.set("access_token", shortLivedToken);
+  const response = await fetch(url.toString());
+  const payload = await readJson(response);
+  if (!response.ok || typeof payload["access_token"] !== "string" || !payload["access_token"]) {
+    throw new Error(`Instagram long-lived token exchange failed (HTTP ${response.status}).`);
+  }
+  if (typeof payload["expires_in"] !== "number" || payload["expires_in"] <= 0) {
+    throw new Error("Instagram long-lived token exchange returned no valid expiration.");
+  }
+  return {
+    accessToken: payload["access_token"] as string,
+    expiresIn: payload["expires_in"],
+  };
 }
 
 /** Long-lived Meta user token (60 days) — short-lived tokens expire in ~1 hour. */
@@ -873,6 +1068,14 @@ export async function revokeOAuthToken(
       };
     }
     if (provider === "facebook" || provider === "instagram" || provider === "whatsapp") {
+      if (provider === "instagram") {
+        return {
+          revoked: false,
+          supported: false,
+          message:
+            "Instagram Login has no supported revoke endpoint here; stored access was deleted. Remove SEO Vale in Instagram's authorized apps to revoke provider access.",
+        };
+      }
       const response = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(accessToken)}`, {
         method: "DELETE",
       });

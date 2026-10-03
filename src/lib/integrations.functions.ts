@@ -395,21 +395,45 @@ export const testIntegration = createServerFn({ method: "POST" })
       }
       const { decryptValue, encryptValue } = await import("@/lib/integrations/crypto.server");
       let accessToken = await decryptValue(row.access_token_ciphertext);
-      const expiresSoon = row.token_expires_at ? Date.parse(row.token_expires_at) - Date.now() < 120_000 : false;
+      const refreshWindowMs = data.provider === "instagram" ? 7 * 24 * 60 * 60 * 1000 : 120_000;
+      const expiresSoon = row.token_expires_at
+        ? Date.parse(row.token_expires_at) - Date.now() < refreshWindowMs
+        : false;
       if (expiresSoon) {
-        if (!row.refresh_token_ciphertext) {
+        if (!row.refresh_token_ciphertext && data.provider !== "instagram") {
           await supabaseAdmin
             .from("integration_connections")
-            .update({ status: "expired", last_error: "Access expired and the provider issued no refresh token. Reconnect the account." })
+            .update({
+              status: "expired",
+              last_error:
+                "Access expired and the provider issued no refresh token. Reconnect the account.",
+            })
             .eq("id", row.id);
-          await log("warning", "Access token expired without a refresh token.", null, "token_expired");
+          await log(
+            "warning",
+            "Access token expired without a refresh token.",
+            null,
+            "token_expired",
+          );
           await recordHealth("TOKEN_EXPIRED", "Access expired. Reconnect this account.");
-          return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message: "Access expired. Reconnect this account." };
+          return {
+            ok: false,
+            status: 0,
+            code: "TOKEN_EXPIRED" as const,
+            message: "Access expired. Reconnect this account.",
+          };
         }
         try {
+          const refreshCredential =
+            data.provider === "instagram" ? accessToken : row.refresh_token_ciphertext;
+          if (!refreshCredential) {
+            throw new Error("No refresh credential is available.");
+          }
           const refreshed = await providers.refreshAccessToken(
             data.provider,
-            await decryptValue(row.refresh_token_ciphertext),
+            data.provider === "instagram"
+              ? refreshCredential
+              : await decryptValue(refreshCredential),
             creds,
           );
           accessToken = refreshed.accessToken;
@@ -427,8 +451,16 @@ export const testIntegration = createServerFn({ method: "POST" })
             .eq("id", row.id);
           await log("info", "Access token refreshed.", null, "token_refreshed");
         } catch (caught) {
-          const message = caught instanceof Error ? caught.message : "Token refresh failed.";
-          await supabaseAdmin.from("integration_connections").update({ status: "expired", last_error: message }).eq("id", row.id);
+          const message =
+            data.provider === "instagram"
+              ? "Instagram token refresh failed. Reconnect the account."
+              : caught instanceof Error
+                ? caught.message
+                : "Token refresh failed.";
+          await supabaseAdmin
+            .from("integration_connections")
+            .update({ status: "expired", last_error: message })
+            .eq("id", row.id);
           await log("error", message, null, "token_refresh_failed");
           await recordHealth("TOKEN_EXPIRED", message);
           return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message };
@@ -537,7 +569,7 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
       provider: data.provider,
       event_type: "disconnected",
       level: "info",
-      message: `Connection removed and stored credentials deleted. ${revokeNote}`.slice(0, 500),
+      message: `Stored connection removed. ${revokeNote}`.slice(0, 500),
     });
     return { disconnected: true, revokeNote };
   });
