@@ -1,8 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Inbox, ChevronDown, Reply, Sparkles, Send, Copy, Check, RefreshCw } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Search,
+  Inbox,
+  ChevronDown,
+  Reply,
+  Sparkles,
+  Send,
+  Copy,
+  Check,
+  RefreshCw,
+  MapPin,
+  ExternalLink,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import {
@@ -27,6 +40,9 @@ import { useApp, ALL_LOCATIONS } from "@/lib/app-context";
 import { draftReply } from "@/lib/ai.functions";
 import { syncGoogleBusinessReviews } from "@/lib/google-business.functions";
 import { syncTrustpilotReviews } from "@/lib/trustpilot.functions";
+import { listIntegrations } from "@/lib/integrations.functions";
+import { scanGooglePlacesReviews } from "@/lib/google-places.functions";
+import type { GooglePlaceSnapshot } from "@/lib/google-places.server";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/reviews")({
@@ -68,6 +84,38 @@ function ReviewCenter() {
 
   const { data: reviews = [], isLoading } = useLiveReviews();
   const { data: connected = [] } = useConnectedPlatforms();
+  const integrationsFn = useServerFn(listIntegrations);
+  const { data: integrations } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: () => integrationsFn(),
+  });
+  const googlePlaces = integrations?.items.find((item) => item.provider === "google_maps");
+  const googlePlacesConfigured = Boolean(
+    googlePlaces?.configured ||
+    googlePlaces?.credentials.some((credential) => credential.masked || credential.fromEnvironment),
+  );
+  const [placesSnapshot, setPlacesSnapshot] = useState<GooglePlaceSnapshot | null>(null);
+  const [isScanningPlaces, setIsScanningPlaces] = useState(false);
+  const [placesScanError, setPlacesScanError] = useState<string | null>(null);
+  const scanPlacesFn = useServerFn(scanGooglePlacesReviews);
+  const runPlacesScan = async () => {
+    setPlacesScanError(null);
+    setPlacesSnapshot(null);
+    setIsScanningPlaces(true);
+    try {
+      setPlacesSnapshot(await scanPlacesFn());
+      toast.success("Google Places scan complete");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Google Places scan failed.";
+      setPlacesScanError(message);
+      toast.error("Google Places scan failed", { description: message });
+    } finally {
+      setIsScanningPlaces(false);
+    }
+  };
+  useEffect(() => {
+    setPlacesSnapshot(null);
+  }, [googlePlaces?.accountRef]);
   const connectedIds = new Set(
     connected.filter((c) => c.status === "connected").map((c) => c.platform),
   );
@@ -91,7 +139,8 @@ function ReviewCenter() {
         if (status !== "all" && r.status !== status) return false;
         if (sentiment !== "all" && r.sentiment !== sentiment) return false;
         if (rating !== "all" && r.rating !== Number(rating)) return false;
-        if (query && !(`${r.author} ${r.body}`.toLowerCase().includes(query.toLowerCase()))) return false;
+        if (query && !`${r.author} ${r.body}`.toLowerCase().includes(query.toLowerCase()))
+          return false;
         return true;
       }),
     [reviews, platform, status, sentiment, rating, query, effectiveLoc],
@@ -102,13 +151,17 @@ function ReviewCenter() {
     arr.sort((a, b) => {
       switch (sort) {
         case "oldest":
-          return new Date(a.external_created_at).getTime() - new Date(b.external_created_at).getTime();
+          return (
+            new Date(a.external_created_at).getTime() - new Date(b.external_created_at).getTime()
+          );
         case "rating-high":
           return b.rating - a.rating;
         case "rating-low":
           return a.rating - b.rating;
         default:
-          return new Date(b.external_created_at).getTime() - new Date(a.external_created_at).getTime();
+          return (
+            new Date(b.external_created_at).getTime() - new Date(a.external_created_at).getTime()
+          );
       }
     });
     return arr;
@@ -152,7 +205,9 @@ function ReviewCenter() {
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ["reviews"] });
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
-      toast.success("Live sync complete", { description: results.join(" · ") || "Nothing to sync" });
+      toast.success("Live sync complete", {
+        description: results.join(" · ") || "Nothing to sync",
+      });
     },
     onError: (e) => toast.error("Sync failed", { description: (e as Error).message }),
   });
@@ -164,7 +219,7 @@ function ReviewCenter() {
         title="Review Center"
         description="Every review from every connected platform, in one place. Filter, triage and open a review to see full context."
         actions={
-          (connectedIds.has("google") || connectedIds.has("trustpilot")) ? (
+          connectedIds.has("google") || connectedIds.has("trustpilot") ? (
             <Button onClick={() => syncAll.mutate()} disabled={syncAll.isPending}>
               {syncAll.isPending ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
               Sync live reviews
@@ -172,6 +227,185 @@ function ReviewCenter() {
           ) : undefined
         }
       />
+
+      <section className="card-elevated mb-4 p-4 md:p-5" aria-labelledby="google-places-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+              Public Google scan
+            </p>
+            <h2 id="google-places-title" className="mt-1 font-display text-lg font-bold">
+              Google Places rating and reviews
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Scan the selected public listing without Google Business Profile OAuth. Results are
+              temporary and are not added to your saved review inbox.
+            </p>
+          </div>
+          <Button
+            onClick={() => void runPlacesScan()}
+            disabled={isScanningPlaces || !googlePlacesConfigured || !googlePlaces?.accountRef}
+          >
+            {isScanningPlaces ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
+            Scan Google reviews
+          </Button>
+        </div>
+
+        {!integrations ? (
+          <p className="mt-3 text-xs text-muted-foreground">Checking Google Places setup…</p>
+        ) : !googlePlacesConfigured ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Add and verify a Places API (New) key in{" "}
+            <Link
+              to="/settings"
+              search={{ tab: "integrations" }}
+              className="font-semibold text-primary hover:underline"
+            >
+              Settings → Integrations
+            </Link>
+            .
+          </p>
+        ) : !googlePlaces?.accountRef ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Search for and select a business in{" "}
+            <Link
+              to="/settings"
+              search={{ tab: "integrations" }}
+              className="font-semibold text-primary hover:underline"
+            >
+              Settings → Integrations → Google Maps / Places
+            </Link>
+            .
+          </p>
+        ) : (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <MapPin className="size-3.5" />
+            Selected Place ID:{" "}
+            <span className="break-all font-mono">{googlePlaces.accountRef}</span>
+          </p>
+        )}
+
+        {placesScanError && (
+          <p
+            className="mt-3 rounded-lg border border-negative/30 bg-negative/5 p-3 text-sm text-negative"
+            role="alert"
+          >
+            {placesScanError}
+          </p>
+        )}
+
+        {placesSnapshot && (
+          <div className="mt-4 space-y-4 border-t pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">{placesSnapshot.name}</h3>
+                <p className="mt-1 text-sm">
+                  {placesSnapshot.rating !== null ? (
+                    <>
+                      <span className="font-semibold">{placesSnapshot.rating.toFixed(1)} / 5</span>
+                      {placesSnapshot.ratingCount > 0 &&
+                        ` · ${placesSnapshot.ratingCount.toLocaleString()} ratings`}
+                    </>
+                  ) : (
+                    "No public rating available"
+                  )}
+                </p>
+              </div>
+              <a
+                href={placesSnapshot.mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+              >
+                View on Google Maps <ExternalLink className="size-3.5" />
+              </a>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Ratings and reviews provided by Google. Reviews are shown in Google’s returned order.
+              This scan is temporary; SEO Vale does not store or send this Google review content to
+              AI services.
+            </p>
+
+            {placesSnapshot.reviews.length === 0 ? (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Google returned no reviews for this place in this scan.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {placesSnapshot.reviews.map((review, index) => (
+                  <li
+                    key={`${review.author}-${review.publishedAt ?? index}-${index}`}
+                    className="rounded-xl border bg-background p-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      {review.authorPhotoUrl && (
+                        <img
+                          src={review.authorPhotoUrl}
+                          alt=""
+                          loading="lazy"
+                          className="size-6 rounded-full"
+                        />
+                      )}
+                      {review.authorUrl ? (
+                        <a
+                          href={review.authorUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-semibold hover:underline"
+                        >
+                          {review.author}
+                        </a>
+                      ) : (
+                        <span className="text-sm font-semibold">{review.author}</span>
+                      )}
+                      <Stars value={review.rating} size={12} />
+                      {review.relativePublishedAt && (
+                        <span className="text-xs text-muted-foreground">
+                          {review.relativePublishedAt}
+                        </span>
+                      )}
+                      <a
+                        href={review.reviewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                      >
+                        Original on Google <ExternalLink className="size-3" />
+                      </a>
+                    </div>
+                    {review.text && (
+                      <p className="mt-3 whitespace-pre-wrap text-sm">{review.text}</p>
+                    )}
+                    {review.originalText && review.originalText !== review.text && (
+                      <>
+                        <p className="mt-2 text-xs text-muted-foreground">Translated by Google</p>
+                        <details className="mt-1 text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">
+                            View original text
+                            {review.originalLanguage ? ` (${review.originalLanguage})` : ""}
+                          </summary>
+                          <p className="mt-2 whitespace-pre-wrap text-sm">{review.originalText}</p>
+                        </details>
+                      </>
+                    )}
+                    {review.flagContentUrl && (
+                      <a
+                        href={review.flagContentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                      >
+                        Report this review to Google <ExternalLink className="size-3" />
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Filter bar */}
       <div className="card-elevated mb-4 p-4">
@@ -191,7 +425,9 @@ function ReviewCenter() {
             className="h-10 rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
           >
             {locationNames.map((l) => (
-              <option key={l} value={l}>{l}</option>
+              <option key={l} value={l}>
+                {l}
+              </option>
             ))}
           </select>
           <select
@@ -242,7 +478,9 @@ function ReviewCenter() {
                   onClick={() => setStatus(s)}
                   className={cn(
                     "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
-                    status === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                    status === s
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
                   )}
                 >
                   {s === "all" ? "All" : s} ({countByStatus(s)})
@@ -259,7 +497,9 @@ function ReviewCenter() {
                   onClick={() => setSentiment(s)}
                   className={cn(
                     "rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors",
-                    sentiment === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                    sentiment === s
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
                   )}
                 >
                   {s === "all" ? "All" : s}
@@ -276,7 +516,9 @@ function ReviewCenter() {
                   onClick={() => setRating(r)}
                   className={cn(
                     "rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                    rating === r ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                    rating === r
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted",
                   )}
                 >
                   {r === "all" ? "All" : `${r}★`}
@@ -335,7 +577,11 @@ function ReviewCenter() {
                       <span className="grid size-10 place-items-center rounded-full bg-secondary font-display text-xs font-bold text-secondary-foreground">
                         {r.initials}
                       </span>
-                      <PlatformIcon id={r.platform} size="sm" className="absolute -bottom-1 -right-1 ring-2 ring-card" />
+                      <PlatformIcon
+                        id={r.platform}
+                        size="sm"
+                        className="absolute -bottom-1 -right-1 ring-2 ring-card"
+                      />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -346,14 +592,33 @@ function ReviewCenter() {
                         <span className="ml-auto flex items-center gap-2">
                           <StatusBadge status={r.status} />
                           <span className="text-[11px] text-muted-foreground">{r.date}</span>
-                          <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-180")} />
+                          <ChevronDown
+                            className={cn(
+                              "size-4 text-muted-foreground transition-transform",
+                              open && "rotate-180",
+                            )}
+                          />
                         </span>
                       </span>
-                      {r.title && <span className="mt-1 block text-sm font-semibold">{r.title}</span>}
-                      <span className={cn("mt-1 block text-sm text-muted-foreground", !open && "line-clamp-2")}>{r.body}</span>
+                      {r.title && (
+                        <span className="mt-1 block text-sm font-semibold">{r.title}</span>
+                      )}
+                      <span
+                        className={cn(
+                          "mt-1 block text-sm text-muted-foreground",
+                          !open && "line-clamp-2",
+                        )}
+                      >
+                        {r.body}
+                      </span>
                       <span className="mt-2 flex flex-wrap items-center gap-1.5">
                         {r.tags.map((t) => (
-                          <span key={t} className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{t}</span>
+                          <span
+                            key={t}
+                            className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                          >
+                            {t}
+                          </span>
                         ))}
                         <span className="text-[11px] text-muted-foreground">· {r.location}</span>
                       </span>
@@ -364,7 +629,9 @@ function ReviewCenter() {
                     <div className="animate-rise border-t bg-muted/30 px-4 py-4 md:px-5">
                       {r.reply && (
                         <div className="mb-3 rounded-lg border bg-card p-4">
-                          <p className="text-xs font-semibold text-positive">Your published response</p>
+                          <p className="text-xs font-semibold text-positive">
+                            Your published response
+                          </p>
                           <p className="mt-1 text-sm">{r.reply}</p>
                         </div>
                       )}
@@ -372,7 +639,11 @@ function ReviewCenter() {
                       <div className="rounded-lg border bg-card p-4">
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-semibold text-muted-foreground">
-                            {r.reply ? "Update response" : aiMutation.isPending ? "Creating reply draft…" : "AI reply draft"}
+                            {r.reply
+                              ? "Update response"
+                              : aiMutation.isPending
+                                ? "Creating reply draft…"
+                                : "AI reply draft"}
                           </p>
                           <Button
                             size="sm"
@@ -406,8 +677,14 @@ function ReviewCenter() {
                               publish.mutate(
                                 { id: r.id, reply: draft.trim() },
                                 {
-                                  onSuccess: () => toast.success("Response published", { description: `Reply saved for ${r.author}.` }),
-                                  onError: (e) => toast.error("Could not publish", { description: (e as Error).message }),
+                                  onSuccess: () =>
+                                    toast.success("Response published", {
+                                      description: `Reply saved for ${r.author}.`,
+                                    }),
+                                  onError: (e) =>
+                                    toast.error("Could not publish", {
+                                      description: (e as Error).message,
+                                    }),
                                 },
                               )
                             }
@@ -423,8 +700,18 @@ function ReviewCenter() {
                           variant="outline"
                           onClick={() =>
                             updateReview.mutate(
-                              { id: r.id, patch: { status: r.status === "escalated" ? "pending" : "escalated" } },
-                              { onError: (e) => toast.error("Could not update status", { description: (e as Error).message }) },
+                              {
+                                id: r.id,
+                                patch: {
+                                  status: r.status === "escalated" ? "pending" : "escalated",
+                                },
+                              },
+                              {
+                                onError: (e) =>
+                                  toast.error("Could not update status", {
+                                    description: (e as Error).message,
+                                  }),
+                              },
                             )
                           }
                         >
@@ -435,8 +722,16 @@ function ReviewCenter() {
                           variant="outline"
                           onClick={() =>
                             updateReview.mutate(
-                              { id: r.id, patch: { priority: r.priority === "high" ? "medium" : "high" } },
-                              { onError: (e) => toast.error("Could not update priority", { description: (e as Error).message }) },
+                              {
+                                id: r.id,
+                                patch: { priority: r.priority === "high" ? "medium" : "high" },
+                              },
+                              {
+                                onError: (e) =>
+                                  toast.error("Could not update priority", {
+                                    description: (e as Error).message,
+                                  }),
+                              },
                             )
                           }
                         >
@@ -449,7 +744,12 @@ function ReviewCenter() {
                             onClick={() =>
                               updateReview.mutate(
                                 { id: r.id, patch: { unread: false } },
-                                { onError: (e) => toast.error("Could not update", { description: (e as Error).message }) },
+                                {
+                                  onError: (e) =>
+                                    toast.error("Could not update", {
+                                      description: (e as Error).message,
+                                    }),
+                                },
                               )
                             }
                           >

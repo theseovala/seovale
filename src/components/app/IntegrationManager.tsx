@@ -532,6 +532,7 @@ export function IntegrationManager() {
                     <GoogleMapsSetupGuide
                       credentialsReady={(item?.credentials ?? []).some((c) => c.masked || c.fromEnvironment)}
                       verified={status === "connected"}
+                      placeId={item?.accountRef ?? null}
                       onChanged={refresh}
                     />
                   )}

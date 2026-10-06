@@ -325,7 +325,7 @@ export const testIntegration = createServerFn({ method: "POST" })
     // provider until the cooldown passes, and say so honestly.
     const ops = await import("@/lib/ops.server");
     const circuit = await ops.checkCircuit(supabaseAdmin, member.workspace_id, data.provider);
-    if (!circuit.allowed) {
+    if (data.provider !== "google_maps" && !circuit.allowed) {
       const message = `Paused after repeated failures. The next attempt is allowed after ${circuit.cooldownUntil ? new Date(circuit.cooldownUntil).toLocaleString() : "the cooldown"}.`;
       await log("warning", message, null, "circuit_open");
       await recordHealth("RATE_LIMITED", message);

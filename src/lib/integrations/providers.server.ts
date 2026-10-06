@@ -52,7 +52,11 @@ export function outcomeFor(ok: boolean, status: number, message: string): TestOu
     if (/scope|insufficient permission/i.test(message)) return "INSUFFICIENT_SCOPE";
     // Google returns 403 when the API itself is disabled or needs allow-listing for the project;
     // that is a provider-side setup state, not a bad credential.
-    if (/has not been used in project|is disabled|blocked|not enabled|enable it by visiting|accessNotConfigured/i.test(message))
+    if (
+      /has not been used in project|is disabled|blocked|not enabled|not activated|enable it by visiting|accessNotConfigured/i.test(
+        message,
+      )
+    )
       return "APPROVAL_REQUIRED";
     return "INVALID_CREDENTIALS";
   }
@@ -91,6 +95,10 @@ function failure(response: Response, payload: Record<string, any>): TestResult {
     rateLimited: response.status === 429,
     code: outcomeFor(false, response.status, text),
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function googleTest(url: string, accessToken: string, pick: (p: Record<string, any>) => { label?: string | null; ref?: string | null }) {
@@ -443,6 +451,94 @@ async function simpleFetchTest(
   };
 }
 
+async function testGooglePlaces(
+  accountRef: string | null,
+  creds: CredentialBag,
+): Promise<TestResult> {
+  const key = envValue(["GOOGLE_MAPS_API_KEY"], creds);
+  if (!key) return notConfigured("No Google Maps API key is configured.");
+
+  const response = accountRef
+    ? await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(accountRef)}`, {
+        headers: {
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": "id,displayName,rating,userRatingCount",
+        },
+      })
+    : await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": "places.id",
+        },
+        body: JSON.stringify({ textQuery: "coffee shops" }),
+      });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    const result = failure(response, payload);
+    const googleError = isRecord(payload["error"]) ? payload["error"] : {};
+    const googleStatus = typeof googleError["status"] === "string"
+      ? `; Google status ${googleError["status"]}`
+      : "";
+    const details = Array.isArray(googleError["details"])
+      ? googleError["details"].filter(isRecord)
+      : [];
+    const reasons = [
+      ...new Set(
+        details
+          .map((detail) => {
+            const metadata = isRecord(detail["metadata"]) ? detail["metadata"] : {};
+            return detail["reason"] ?? metadata["reason"];
+          })
+          .filter((reason): reason is string => typeof reason === "string"),
+      ),
+    ];
+    const reason = reasons.length ? `; reason ${reasons.join(", ")}` : "";
+    return {
+      ...result,
+      message: `Google Places API (New) failed (HTTP ${response.status}${googleStatus}${reason}): ${result.message}${
+        result.code === "APPROVAL_REQUIRED"
+          ? " Enable Places API (New) on the Google Cloud project associated with this key; Google Business Profile approval is not needed."
+          : ""
+      }`,
+    };
+  }
+
+  if (accountRef) {
+    if (typeof payload["id"] !== "string" || !payload["id"]) {
+      return {
+        ok: false,
+        status: response.status,
+        message: "Google Places returned no place ID. Check the saved Place ID and API key.",
+        code: "PROVIDER_ERROR",
+      };
+    }
+    const rating = payload["rating"];
+    const ratingCount = Number(payload["userRatingCount"] ?? 0);
+    return {
+      ok: true,
+      status: response.status,
+      message:
+        typeof rating === "number"
+          ? `Google Places verified: ${rating}/5 from ${ratingCount.toLocaleString()} ratings.`
+          : "Google Places verified this place; no public rating is available yet.",
+      label: "Google Places API (New)",
+      accountRef: payload["id"],
+      code: "CONNECTED",
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    message: "Google Places API (New) SearchText verified. Select a public listing to scan it.",
+    label: "Google Places API (New)",
+    code: "CONNECTED",
+  };
+}
+
 /** Routes every api_key provider to its real documented test endpoint. */
 export async function testApiKeyProvider(
   providerId: string,
@@ -454,15 +550,8 @@ export async function testApiKeyProvider(
       return testTrustpilot(accountRef, creds);
     case "tripadvisor":
       return testTripadvisor(accountRef, creds);
-    case "google_maps": {
-      const key = envValue(["GOOGLE_MAPS_API_KEY"], creds);
-      if (!key) return notConfigured("No Google Maps API key is configured.");
-      return simpleFetchTest(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent("1600 Amphitheatre Parkway, Mountain View, CA")}&key=${encodeURIComponent(key)}`,
-        {},
-        (p) => ({ ok: p["status"] === "OK", message: p["error_message"] ?? String(p["status"]), label: "Geocoding API", ref: null }),
-      );
-    }
+    case "google_maps":
+      return testGooglePlaces(accountRef, creds);
     case "whatsapp": {
       const token = envValue(["WHATSAPP_ACCESS_TOKEN"], creds);
       const phoneId = envValue(["WHATSAPP_PHONE_NUMBER_ID"], creds);
