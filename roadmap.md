@@ -183,3 +183,9 @@
 - [x] Integration center full pass: real connect/test/disconnect per provider
 - [x] Real-time scan progress + notifications (Supabase realtime on scans/scan_stages/notifications)
 - [x] Single super-admin login: theseovala@gmail.com (reset password), remove other auth users
+
+## License server + live client validation (requested 2026-10-06)
+- [ ] Verify admin create, activate, suspend, and renew against real persisted license state
+- [ ] Link the issued license to its authorized client domain
+- [ ] Generate and verify a short-lived single-use download token
+- [ ] Verify client-side real-time license validation reflects server state changes
