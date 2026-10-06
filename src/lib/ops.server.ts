@@ -2,7 +2,6 @@
 // and stalled-job recovery. Everything here writes real, measured state.
 // Secrets are never accepted, stored or logged by these helpers.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createHash } from "node:crypto";
 
 export type SecurityCategory =
   | "authentication"
@@ -52,37 +51,6 @@ export async function recordSecurityEvent(admin: SupabaseClient, input: Security
     provider: input.provider ?? null,
     metadata: scrub(input.metadata),
   });
-}
-
-// ---------------------------------------------------------------------------
-// Abuse limits
-// ---------------------------------------------------------------------------
-
-/**
- * Fixed-window limit for expensive or unauthenticated operations, counted by the
- * existing atomic `consume_rate_limit` function so parallel requests cannot slip
- * past it. The key is hashed, so no user or workspace id is stored in clear. It
- * fails closed: if the counter cannot be advanced the request is refused rather
- * than run unmetered.
- */
-export async function consumeAbuseLimit(
-  admin: Pick<SupabaseClient, "rpc">,
-  bucket: string,
-  key: string,
-  limit: number,
-  windowSeconds: number,
-): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
-  const windowMs = windowSeconds * 1000;
-  const windowStart = Math.floor(Date.now() / windowMs) * windowMs;
-  const retryAfterSeconds = Math.max(1, Math.ceil((windowStart + windowMs - Date.now()) / 1000));
-  const keyHash = createHash("sha256").update(`${bucket}:${key}`).digest("hex");
-  const { data, error } = await (admin as any).rpc("consume_rate_limit", {
-    p_bucket: bucket,
-    p_key_hash: keyHash,
-    p_window_start: new Date(windowStart).toISOString(),
-  });
-  if (error || typeof data !== "number") return { allowed: false, retryAfterSeconds };
-  return { allowed: data <= limit, retryAfterSeconds };
 }
 
 // ---------------------------------------------------------------------------

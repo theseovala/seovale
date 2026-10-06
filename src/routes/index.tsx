@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/app/primitives";
 import { BRAND } from "@/lib/domain";
-import { PublicFooter } from "@/components/legal/LegalDocument";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -100,7 +99,7 @@ function Landing() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/auth" search={{ mode: "signup" }}>
+              <Link to="/auth" search={{}}>
                 Create an account
               </Link>
             </Button>
@@ -140,10 +139,9 @@ function Landing() {
         </section>
       </main>
 
-      <PublicFooter />
-      <p className="pb-8 text-center text-xs text-muted-foreground">
-        {BRAND.name} is independent and not affiliated with, sponsored or endorsed by Google.
-      </p>
+      <footer className="border-t border-border py-8 text-center text-sm text-muted-foreground">
+        {BRAND.footer} — {BRAND.tagline}
+      </footer>
     </div>
   );
 }

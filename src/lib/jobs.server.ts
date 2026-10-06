@@ -42,19 +42,14 @@ export async function enqueueJob(
   return { enqueued: true, id: data?.id ?? null };
 }
 
-/**
- * Claims due jobs by leasing them (single-flight friendly; cron callers are one at a time).
- * Also reclaims jobs left in "processing" whose lease expired (the worker died mid-job).
- */
+/** Claims due jobs by leasing them (single-flight friendly; cron callers are one at a time). */
 export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMinutes = 5) {
-  const nowIso = new Date().toISOString();
   const { data: due, error } = await admin
     .from("integration_sync_jobs")
-    .select("id,workspace_id,provider,job_type,payload,attempts,max_attempts,started_at,status,lease_expires_at")
-    .or(
-      `and(status.in.(pending,retrying),next_attempt_at.lte.${nowIso},or(lease_expires_at.is.null,lease_expires_at.lt.${nowIso})),` +
-        `and(status.eq.processing,lease_expires_at.lt.${nowIso})`,
-    )
+    .select("id,workspace_id,provider,job_type,payload,attempts,max_attempts,started_at")
+    .in("status", ["pending", "retrying"])
+    .lte("next_attempt_at", new Date().toISOString())
+    .or(`lease_expires_at.is.null,lease_expires_at.lt.${new Date().toISOString()}`)
     .order("priority", { ascending: true })
     .order("next_attempt_at", { ascending: true })
     .limit(limit);
@@ -62,24 +57,7 @@ export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMi
   const rows = due ?? [];
   const claimed: typeof rows = [];
   for (const job of rows) {
-    const reclaim = job.status === "processing";
-    if (reclaim && job.attempts >= job.max_attempts) {
-      // The final attempt died holding its lease: dead-letter it instead of running past max_attempts.
-      await admin
-        .from("integration_sync_jobs")
-        .update({
-          status: "failed" as JobStatus,
-          lease_expires_at: null,
-          last_error: "Lease expired during the final attempt; the worker did not finish.",
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.id)
-        .eq("status", "processing")
-        .eq("lease_expires_at", job.lease_expires_at as string);
-      continue;
-    }
-    let claim = admin
+    const { data } = await admin
       .from("integration_sync_jobs")
       .update({
         status: "processing" as JobStatus,
@@ -88,12 +66,10 @@ export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMi
         attempts: job.attempts + 1,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", job.id);
-    // Optimistic guard: only win the row if nobody else claimed it since it was read.
-    claim = reclaim
-      ? claim.eq("status", "processing").eq("lease_expires_at", job.lease_expires_at as string)
-      : claim.in("status", ["pending", "retrying"]);
-    const { data } = await claim.select().maybeSingle();
+      .eq("id", job.id)
+      .in("status", ["pending", "retrying"])
+      .select()
+      .single();
     if (data) claimed.push(data as any);
   }
   return claimed;

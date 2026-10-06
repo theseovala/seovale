@@ -18,7 +18,7 @@ import {
   startIntegrationOAuth,
   testIntegration,
 } from "@/lib/integrations.functions";
-import { integrationRedirectUri, type IntegrationDefinition } from "@/lib/integrations/registry";
+import type { IntegrationDefinition } from "@/lib/integrations/registry";
 
 import {
   integrationStatusLabel as statusLabel,
@@ -28,8 +28,6 @@ import {
 } from "@/lib/integrations/status";
 import { GoogleBusinessSetupGuide, GoogleMapsSetupGuide } from "@/components/app/GoogleSetupGuide";
 import { ProviderSetupGuide } from "@/components/app/ProviderSetupGuide";
-import { isGoogleOAuthProvider, useGoogleDisclosure } from "@/components/legal/GoogleDisclosureDialog";
-import { GOOGLE_DISCLOSURE_VERSION } from "@/lib/legal";
 
 
 /** Integration overview — every number is counted from real rows, nothing estimated. */
@@ -90,13 +88,8 @@ function IntegrationOverview() {
 }
 
 function openAuthorization(url: string) {
-  // window.open with the "noopener" feature always returns null (HTML spec),
-  // which made every call look like a blocked popup and also navigated this
-  // tab away. Open normally, then sever the opener link by hand; only fall
-  // back to same-tab navigation when the popup really was blocked.
-  const popup = window.open(url, "_blank");
-  if (popup) popup.opener = null;
-  else window.location.assign(url);
+  const popup = window.open(url, "_blank", "noopener,noreferrer");
+  if (!popup) window.location.assign(url);
 }
 
 
@@ -126,11 +119,10 @@ function CredentialPanel({
   const saveCredsFn = useServerFn(saveProviderCredentials);
   const revokeCredsFn = useServerFn(revokeProviderCredentials);
 
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
   const redirectUri =
     definition.kind === "managed"
-      ? `${origin}/api/public/google-business/callback`
-      : integrationRedirectUri(origin, definition.id);
+      ? `${typeof window === "undefined" ? "" : window.location.origin}/api/public/google-business/callback`
+      : `${typeof window === "undefined" ? "" : window.location.origin}/api/public/integrations/callback`;
 
   const saveCreds = useMutation({
     mutationFn: () => saveCredsFn({ data: { provider: definition.id, values } }),
@@ -268,7 +260,6 @@ export function IntegrationManager() {
     if (!provider || !status) return;
     const label = integrationById(provider)?.label ?? provider;
     if (status === "connected") toast.success(`${label} connected and verified`);
-    else if (status === "cancelled") toast.info(`${label} connection cancelled. No changes were made.`);
     else toast.error(`${label} could not be connected — see the activity log below`);
     window.history.replaceState({}, "", window.location.pathname);
     void queryClient.invalidateQueries({ queryKey: ["integrations"] });
@@ -280,14 +271,8 @@ export function IntegrationManager() {
     void queryClient.invalidateQueries({ queryKey: ["integration_events"] });
   };
 
-  const disclosure = useGoogleDisclosure();
   const connect = useMutation({
-    mutationFn: (provider: string) => {
-      const definition = integrationById(provider);
-      // Google providers are only reached through the disclosure dialog below.
-      const disclosureVersion = definition && isGoogleOAuthProvider(definition.scopes) ? GOOGLE_DISCLOSURE_VERSION : undefined;
-      return startFn({ data: { provider, origin: window.location.origin, disclosureVersion } });
-    },
+    mutationFn: (provider: string) => startFn({ data: { provider, origin: window.location.origin } }),
     onSuccess: (result) => openAuthorization(result.authorizationUrl),
     onError: (error: Error) => toast.error(error.message),
     onSettled: () => setBusy(null),
@@ -308,7 +293,7 @@ export function IntegrationManager() {
     mutationFn: ({ provider, accountRef }: { provider: string; accountRef: string }) =>
       saveFn({ data: { provider, accountRef } }),
     onSuccess: (_result, variables) => {
-      toast.success("Saved — verifying it against the live API now");
+      toast.success("Saved — run Test connection to verify it against the live API");
       refresh();
       setBusy(variables.provider);
       test.mutate(variables.provider);
@@ -479,7 +464,7 @@ export function IntegrationManager() {
                       )}
                       {item?.lastError && <p className="mt-1 text-xs text-negative">{item.lastError}</p>}
                       {item?.tokenExpiresAt && status === "connected" && (
-                        <p className="mt-1 text-[11px] text-muted-foreground">Access token expires {relativeTime(item.tokenExpiresAt)} · refreshed on the next test or sync if the provider issued a refresh token</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">Access renews automatically · expires {relativeTime(item.tokenExpiresAt)}</p>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -496,13 +481,8 @@ export function IntegrationManager() {
                           size="sm"
                           disabled={!item?.configured || pending}
                           onClick={() => {
-                            const start = () => {
-                              setBusy(definition.id);
-                              connect.mutate(definition.id);
-                            };
-                            if (isGoogleOAuthProvider(definition.scopes)) {
-                              disclosure.request({ label: definition.label, scopes: definition.scopes, businessProfile: false, run: start });
-                            } else start();
+                            setBusy(definition.id);
+                            connect.mutate(definition.id);
                           }}
                         >
                           {pending && connect.isPending && <Loader2 className="animate-spin" />}
@@ -631,7 +611,6 @@ export function IntegrationManager() {
           </div>
         )}
       </Section>
-      {disclosure.dialog}
     </div>
   );
 }

@@ -55,25 +55,17 @@ async function audit(admin: SupabaseClient, workspaceId: string, action: string,
   await admin.from("audit_logs").insert({ workspace_id: workspaceId, action, target_type: "scan", target_id: scanId, metadata });
 }
 
-/**
- * Google API key for PageSpeed: the PageSpeed provider's own vault key first,
- * then the Google Maps vault key, then the server environment as fallback.
- */
+/** Google API key for PageSpeed: credential vault first, server environment as fallback. */
 async function pagespeedKey(admin: SupabaseClient, workspaceId: string) {
-  const { loadProviderCredentials } = await import("@/lib/integrations/credentials.server");
-  for (const [group, fields] of [
-    ["pagespeed", ["PAGESPEED_API_KEY"]],
-    ["google_maps", ["GOOGLE_MAPS_API_KEY", "GOOGLE_API_KEY"]],
-  ] as const) {
-    try {
-      const bag = await loadProviderCredentials(admin, workspaceId, group);
-      const fromVault = fields.map((field) => bag[field]).find(Boolean);
-      if (fromVault) return fromVault;
-    } catch {
-      // Vault unavailable — fall through to the next source.
-    }
+  try {
+    const { loadProviderCredentials } = await import("@/lib/integrations/credentials.server");
+    const bag = await loadProviderCredentials(admin, workspaceId, "google_maps");
+    const fromVault = bag["GOOGLE_MAPS_API_KEY"] ?? bag["GOOGLE_API_KEY"];
+    if (fromVault) return fromVault;
+  } catch {
+    // Vault unavailable — fall through to the environment.
   }
-  return process.env["PAGESPEED_API_KEY"] || process.env["GOOGLE_API_KEY"] || null;
+  return process.env["GOOGLE_API_KEY"] ?? null;
 }
 
 export interface RunScanResult {
@@ -345,21 +337,8 @@ function collectFacts(
 
   // Source 3+: infrastructure observations.
   if (tlsRaw) push("ssl_issuer", (tlsRaw as any).issuer, "ssl", "certificate", "verified");
-  if (rdapRaw) push("registrar", rdapRegistrarName(rdapRaw), "rdap", "registry", "verified");
+  if (rdapRaw) push("registrar", (rdapRaw as any).registrar, "rdap", "registry", "verified");
   return facts;
-}
-
-/** Registrar name from an RDAP domain response: the entity with role "registrar", vCard "fn" property. */
-export function rdapRegistrarName(rdapRaw: Record<string, unknown> | null): string | null {
-  const body = (rdapRaw as any)?.body;
-  const entities = Array.isArray(body?.entities) ? body.entities : [];
-  for (const entity of entities) {
-    if (!Array.isArray(entity?.roles) || !entity.roles.includes("registrar")) continue;
-    const properties = Array.isArray(entity.vcardArray?.[1]) ? entity.vcardArray[1] : [];
-    const fn = properties.find((property: unknown) => Array.isArray(property) && property[0] === "fn");
-    if (fn && typeof fn[3] === "string" && fn[3].trim()) return fn[3].trim();
-  }
-  return null;
 }
 
 export async function runScan(admin: SupabaseClient, scanId: string): Promise<RunScanResult> {
@@ -620,7 +599,6 @@ export async function runScan(admin: SupabaseClient, scanId: string): Promise<Ru
   const { data: previousScan } = await admin
     .from("scans")
     .select("id,score,created_at")
-    .eq("workspace_id", scan.workspace_id)
     .eq("target_domain", scan.target_domain)
     .in("status", ["completed", "completed_with_warnings"])
     .lt("created_at", scan.created_at)

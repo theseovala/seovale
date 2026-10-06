@@ -80,8 +80,6 @@ function Analytics() {
   const summary = computeReputation(reviews);
   const avgResponseHours = responseTimeHours(reviews);
   const responseTrend = monthlyResponseTime(reviews, 6);
-  const hasVolume = trend.some((m) => m.reviews > 0);
-  const hasResponseTimes = responseTrend.some((m) => m.hours !== null);
 
   const prev = trend.length >= 2 ? trend[trend.length - 2] : undefined;
   const last = trend.length >= 1 ? trend[trend.length - 1] : undefined;
@@ -103,7 +101,7 @@ function Analytics() {
         <StatCard label="Reputation score" value={summary.score} sub="Composite of rating, volume, sentiment & response" trend={scoreTrend} icon={Gauge} tone="primary" />
         <StatCard label="Average rating" value={summary.avgRating || "—"} sub={`${summary.total} reviews tracked`} trend={ratingTrend} icon={Star} tone="rating" />
         <StatCard label="Review velocity" value={`${monthlyVelocity}/mo`} sub="Reviews collected this month" icon={MessagesSquare} tone="positive" />
-        <StatCard label="Median response time" value={formatHours(avgResponseHours)} sub="Faster is better" icon={Timer} tone="default" />
+        <StatCard label="Avg response time" value={formatHours(avgResponseHours)} sub="Faster is better" icon={Timer} tone="default" />
       </div>
 
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
@@ -134,12 +132,10 @@ function Analytics() {
         <Section title="Review volume" description="Monthly reviews collected">
           {isLoading ? (
             <Skeleton className="h-72 w-full" />
-          ) : !hasVolume ? (
-            <EmptyState icon={MessagesSquare} title="No reviews in this period" description="Monthly volume will appear once reviews are collected." />
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trend} margin={{ left: -22, right: 8, top: 8 }}>
+                <BarChart data={responseTrend} margin={{ left: -22, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
                   <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
@@ -177,12 +173,10 @@ function Analytics() {
         <Section title="Response performance" description="Median reply time by month">
           {isLoading ? (
             <Skeleton className="h-64 w-full" />
-          ) : !hasResponseTimes ? (
-            <EmptyState icon={Timer} title="No replies in this period" description="Reply times will appear once reviews have recorded replies." />
           ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={responseTrend} margin={{ left: -22, right: 8, top: 8 }}>
+                <BarChart data={trend} margin={{ left: -22, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
                   <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />

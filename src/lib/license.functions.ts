@@ -575,25 +575,7 @@ export const setAdminRole = createServerFn({ method: "POST" })
     const db = await admin();
     await guard(db, ctx.userId, "manage_access");
     const authority = await import("@/lib/license/authority.server");
-    // manage_access includes security_admin, which must not be able to grant
-    // itself (or anyone) owner or super_admin. Only an owner changes those roles.
-    if (data.role === "owner" || data.role === "super_admin") {
-      const access = await import("@/lib/license/access.server");
-      const callerRoles = await access.listRoles(db, ctx.userId);
-      if (!callerRoles.includes("owner")) {
-        await authority.recordLicenseSecurityEvent(db, {
-          actor: ctx.userId,
-          eventType: "unauthorized_admin_action",
-          severity: "critical",
-          resource: data.role,
-          message: `Account without the owner role tried to ${data.grant ? "grant" : "revoke"} ${data.role}.`,
-        });
-        throw new Error("Only an owner can grant or revoke the owner and super admin roles.");
-      }
-    }
-    // Exact, case-insensitive match: % and _ in an address must not act as wildcards.
-    const exactEmail = data.email.replace(/[\\%_]/g, (character) => `\\${character}`);
-    const { data: profile } = await db.from("profiles").select("id, email").ilike("email", exactEmail).maybeSingle();
+    const { data: profile } = await db.from("profiles").select("id, email").ilike("email", data.email).maybeSingle();
     if (!profile) throw new Error("No account with that email exists yet.");
     if (data.grant) {
       const { error } = await db.from("admin_roles").upsert({ user_id: profile.id, role: data.role, granted_by: ctx.userId }, { onConflict: "user_id,role" });

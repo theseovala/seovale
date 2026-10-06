@@ -42,7 +42,7 @@ export function hashValue(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-const ALLOWED_HOST_SUFFIXES = [".lovable.app", ".lovableproject.com", ".lovable.dev", ".seovale.com"];
+const ALLOWED_HOST_SUFFIXES = [".lovable.app", ".lovableproject.com", ".lovable.dev", "seovale.com"];
 const STABLE_PREVIEW_ORIGIN = "https://id-preview--3909161c-29f3-4466-a802-1204f20720c3.lovable.app";
 
 export function assertAllowedOrigin(origin: string) {
@@ -98,7 +98,6 @@ export async function exchangeGoogleCode(code: string, verifier: string, redirec
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
     }),
-    signal: AbortSignal.timeout(20_000),
   });
   const payload = (await response.json()) as Record<string, unknown>;
   if (!response.ok || typeof payload["access_token"] !== "string") {
@@ -115,7 +114,6 @@ export async function exchangeGoogleCode(code: string, verifier: string, redirec
 export async function getGoogleAccountEmail(accessToken: string) {
   const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
-    signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) return null;
   const payload = (await response.json()) as { email?: string };

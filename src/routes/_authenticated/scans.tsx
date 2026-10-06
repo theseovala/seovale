@@ -129,7 +129,6 @@ function ScansPage() {
     void navigate({ search: id ? { scan: id } : {}, replace: true });
   const [openFinding, setOpenFinding] = useState<string | null>(null);
   const [findingFilter, setFindingFilter] = useState<(typeof FINDING_FILTERS)[number]>("all");
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
 
   const scans = useQuery({ queryKey: ["scans"], queryFn: () => listScans() });
@@ -186,7 +185,6 @@ function ScansPage() {
   const remove = useMutation({
     mutationFn: (id: string) => deleteScan({ data: { id } }),
     onSuccess: () => {
-      setConfirmDelete(null);
       setActiveId(null);
       toast.success("Scan deleted");
       queryClient.invalidateQueries({ queryKey: ["scans"] });
@@ -322,19 +320,6 @@ function ScansPage() {
             <Section title="Scan result">
               <EmptyState icon={Radar} title="No scan selected" description="Start a scan or pick one from the history to see its findings and evidence." />
             </Section>
-          ) : detail.isError && !data ? (
-            <Section title="Scan result">
-              <EmptyState
-                icon={AlertTriangle}
-                title="This scan could not be loaded"
-                description={(detail.error as Error)?.message || "The request failed."}
-                action={
-                  <Button variant="outline" size="sm" onClick={() => void detail.refetch()} disabled={detail.isFetching}>
-                    {detail.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Try again
-                  </Button>
-                }
-              />
-            </Section>
           ) : detail.isLoading || !data ? (
             <Section title="Scan result">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -370,32 +355,15 @@ function ScansPage() {
                     <Button variant="outline" size="sm" onClick={() => download.mutate(data.scan.id)} disabled={download.isPending}>
                       <Download className="h-4 w-4" /> CSV
                     </Button>
-                    {confirmDelete === data.scan.id ? (
-                      <>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => remove.mutate(data.scan.id)}
-                          disabled={remove.isPending}
-                          aria-label="Confirm deleting this scan and its stored data"
-                        >
-                          {remove.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Confirm delete
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)} disabled={remove.isPending}>
-                          Keep
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setConfirmDelete(data.scan.id)}
-                        disabled={remove.isPending}
-                        aria-label="Delete this scan and its stored data"
-                      >
-                        <Trash2 className="h-4 w-4" /> Delete
-                      </Button>
-                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => remove.mutate(data.scan.id)}
+                      disabled={remove.isPending}
+                      aria-label="Delete this scan and its stored data"
+                    >
+                      {remove.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
+                    </Button>
                   </div>
                 }
               >
@@ -514,10 +482,7 @@ function ScansPage() {
                               </Badge>
                             </div>
                             <p className="truncate text-xs text-muted-foreground">
-                              {source.error_message ??
-                                (source.status === "completed"
-                                  ? "Connection verified against the provider."
-                                  : (SOURCE_STATUS_LABEL[source.status] ?? source.status))}
+                              {source.error_message ?? "Connection verified against the provider."}
                             </p>
                           </div>
                         </li>

@@ -16,7 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useLiveReviews, usePublishReply } from "@/lib/seovale-db";
 import { responseTimeHours } from "@/lib/analytics";
-import { platforms, type PlatformId } from "@/lib/domain";
 import { draftReply } from "@/lib/ai.functions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -210,10 +209,8 @@ function ResponseCenter() {
                   publish.mutate(
                     { id: review.id, reply: draft.trim() },
                     {
-                      onSuccess: (res) => {
-                        const name = platforms[review.platform as PlatformId]?.name ?? review.platform;
-                        if (res.postedToGoogle) toast.success("Reply published on Google", { description: `Posted to Google and saved for ${review.author}.` });
-                        else toast.success(`Reply saved — copy it to ${name} to publish`, { description: res.notPostedReason ?? `No posting API is connected for ${name}.` });
+                      onSuccess: () => {
+                        toast.success("Response published", { description: `Reply saved for ${review.author}.` });
                       },
                       onError: (e) => toast.error("Could not publish", { description: (e as Error).message }),
                     },

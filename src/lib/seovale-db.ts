@@ -3,8 +3,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useServerFn } from "@tanstack/react-start";
-import { publishReviewReply } from "@/lib/google-business.functions";
 import type {
   Alert,
   Competitor,
@@ -126,8 +124,7 @@ function toReview(row: ReviewRow): LiveReview {
     location: row.location_name,
     date: relativeTime(row.external_created_at),
     ...(row.title ? { title: row.title } : {}),
-    // Rating-only reviews are stored with empty text; the label is display-only.
-    body: row.body?.trim() ? row.body : "Rating only — no written review.",
+    body: row.body,
     tags: row.tags ?? [],
     unread: row.unread,
     ...(row.reply ? { reply: row.reply } : {}),
@@ -396,18 +393,25 @@ export function useUpdateProfile() {
   });
 }
 
-/**
- * Saves a reply and, for a Google Business Profile review with a working
- * connection, posts it to Google first (server-side). The result says whether
- * it actually reached the platform, so the UI never claims a publish that only
- * updated the database.
- */
 export function usePublishReply() {
   const qc = useQueryClient();
-  const publish = useServerFn(publishReviewReply);
   return useMutation({
-    mutationFn: async ({ id, reply }: { id: string; reply: string }) =>
-      publish({ data: { reviewId: id, reply } }) as Promise<{ postedToGoogle: boolean; platform: string; notPostedReason: string | null }>,
+    mutationFn: async ({ id, reply }: { id: string; reply: string }) => {
+      const workspaceId = await currentWorkspaceId();
+      const { data: auth } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from("reviews")
+        .update({
+          reply,
+          replied_at: new Date().toISOString(),
+          replied_by: auth.user?.id ?? null,
+          status: "replied",
+          unread: false,
+        })
+        .eq("id", id)
+        .eq("workspace_id", workspaceId);
+      if (error) throw error;
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["reviews"] });
       void qc.invalidateQueries({ queryKey: ["alerts"] });

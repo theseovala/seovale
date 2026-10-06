@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { INTEGRATIONS, credentialGroupOf, integrationById, integrationRedirectUri } from "@/lib/integrations/registry";
+import { INTEGRATIONS, integrationById } from "@/lib/integrations/registry";
 import type { TestResult } from "@/lib/integrations/providers.server";
 
 type Ctx = { supabase: any; userId: string };
@@ -20,24 +20,7 @@ async function workspace(context: Ctx) {
 }
 
 function requireAdmin(member: { role: string }) {
-  // Allow-list, not deny-list: any role other than owner/admin is refused.
-  if (member.role !== "owner" && member.role !== "admin") throw new Error("Only a workspace owner or admin can manage integrations.");
-}
-
-/**
- * Credentials changed or were removed: every provider sharing the vault group
- * loses its cached health, so scans re-test with what is stored now instead of
- * reusing a result measured with the old values.
- */
-async function forgetCachedHealth(admin: any, workspaceId: string, providerId: string, options: { apiKeyOnly?: boolean } = {}) {
-  const group = credentialGroupOf(providerId);
-  const providerIds = INTEGRATIONS.filter((d) => (d.credentialGroup ?? d.id) === group && (!options.apiKeyOnly || d.kind === "api_key")).map((d) => d.id);
-  if (providerIds.length === 0) return;
-  await admin
-    .from("integration_health")
-    .update({ status: "unknown", outcome_code: "NOT_CONFIGURED", last_error: null, last_checked_at: new Date().toISOString() })
-    .eq("workspace_id", workspaceId)
-    .in("provider", providerIds);
+  if (member.role === "member") throw new Error("Only a workspace owner or admin can manage integrations.");
 }
 
 /** Non-secret projection — credential columns are never selected. */
@@ -113,11 +96,9 @@ export const listIntegrations = createServerFn({ method: "GET" })
 
     const google = await supabaseAdmin
       .from("google_business_connections")
-      .select("google_account_email,status,last_synced_at,last_error,scopes")
+      .select("google_account_email,status,last_synced_at,last_error")
       .eq("workspace_id", member.workspace_id)
       .maybeSingle();
-    const { googleBusinessState } = await import("@/lib/google-business-sync.server");
-    const googleState = googleBusinessState(google.data);
 
     return {
       role: member.role,
@@ -128,16 +109,15 @@ export const listIntegrations = createServerFn({ method: "GET" })
             provider: definition.id,
             configured: providerConfigured(definition.id, bags[definition.credentialGroup ?? definition.id]),
             credentials: maskedFor(definition),
-            // Connected only once Google has returned authorized data; tokens alone are not enough.
-            status: googleState.code === "CONNECTED" ? "connected" : googleState.code === "NOT_CONFIGURED" ? "disconnected" : "error",
+            status: row?.status === "connected" ? "connected" : row?.last_error ? "error" : "disconnected",
             accountLabel: row?.google_account_email ?? null,
             accountRef: null,
             scopes: definition.scopes,
             tokenExpiresAt: null,
             connectedAt: null,
             lastTestedAt: row?.last_synced_at ?? null,
-            lastTestOk: googleState.code === "CONNECTED" ? true : row ? false : null,
-            lastError: googleState.code === "CONNECTED" || googleState.code === "NOT_CONFIGURED" ? null : `${googleState.code}: ${googleState.message}`,
+            lastTestOk: row?.status === "connected" ? true : null,
+            lastError: row?.last_error ?? null,
             ...liveState(definition.id),
           };
         }
@@ -184,15 +164,12 @@ export const listIntegrationEvents = createServerFn({ method: "GET" })
 
 export const startIntegrationOAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ provider: z.string(), origin: z.string().url(), disclosureVersion: z.string().max(80).optional() }).parse(input))
+  .inputValidator((input: unknown) => z.object({ provider: z.string(), origin: z.string().url() }).parse(input))
   .handler(async ({ data, context }) => {
     const member = await workspace(context);
     requireAdmin(member);
     const definition = integrationById(data.provider);
     if (!definition || definition.kind !== "oauth2") throw new Error("This integration does not use sign-in authorization.");
-    // Google requires its data-access disclosure to be shown before authorization.
-    const isGoogle = definition.scopes.some((s) => s.includes("googleapis.com"));
-    if (isGoogle && !data.disclosureVersion) throw new Error("Review the Google data-access disclosure before connecting.");
     const { assertAllowedOrigin, googleCallbackOrigin } = await import("@/lib/google-business.server");
     const { buildAuthorizationUrl, providerConfigured } = await import("@/lib/integrations/providers.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -204,7 +181,7 @@ export const startIntegrationOAuth = createServerFn({ method: "POST" })
     const { encryptValue, hashState, pkce, randomToken } = await import("@/lib/integrations/crypto.server");
     const origin = assertAllowedOrigin(data.origin);
     const callbackOrigin = googleCallbackOrigin(origin);
-    const redirectUri = integrationRedirectUri(callbackOrigin, data.provider);
+    const redirectUri = `${callbackOrigin}/api/public/integrations/callback`;
     const state = randomToken();
     const challenge = definition.id in { google_gmail: 1, youtube: 1, twitter: 1, pinterest: 1 } ? pkce() : null;
     const codes = challenge ?? { verifier: null, challenge: null };
@@ -225,10 +202,6 @@ export const startIntegrationOAuth = createServerFn({ method: "POST" })
       level: "info",
       message: `Authorization requested for ${definition.label}.`,
     });
-    if (isGoogle && data.disclosureVersion) {
-      const { recordGoogleDisclosureConsent } = await import("@/lib/privacy.server");
-      await recordGoogleDisclosureConsent(supabaseAdmin, member.workspace_id, context.userId, data.provider, data.disclosureVersion, definition.scopes);
-    }
     return { authorizationUrl: buildAuthorizationUrl(data.provider, redirectUri, state, codes.challenge, creds) };
   });
 
@@ -261,7 +234,6 @@ export const testIntegration = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ provider: z.string() }).parse(input))
   .handler(async ({ data, context }) => {
     const member = await workspace(context);
-    requireAdmin(member);
     const definition = integrationById(data.provider);
     if (!definition) throw new Error("Unknown integration.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -306,15 +278,6 @@ export const testIntegration = createServerFn({ method: "POST" })
       });
 
     if (definition.kind === "manual") {
-      // Meta Business Suite: the saved Meta app credentials can be verified for real,
-      // but the result stays APPROVAL_REQUIRED until Meta grants business_management.
-      if (definition.id === "meta_business" && providers.envValue(["FACEBOOK_APP_ID"], creds) && providers.envValue(["FACEBOOK_APP_SECRET"], creds)) {
-        const checked = await providers.testMetaAppCredentials(creds);
-        const code = checked.code ?? "PROVIDER_ERROR";
-        await log(code === "APPROVAL_REQUIRED" ? "warning" : "error", checked.message, checked.status || null);
-        await recordHealth(code, checked.message);
-        return { ok: false, status: checked.status, code, message: checked.message };
-      }
       // Partner-only APIs: reported honestly instead of pretending a test is possible.
       const message = definition.manualReason ?? "This provider has no public API for this workspace.";
       const code = definition.approvalRequired ? "APPROVAL_REQUIRED" : "UNAVAILABLE";
@@ -326,38 +289,28 @@ export const testIntegration = createServerFn({ method: "POST" })
     if (definition.id === "google_business") {
       const { data: connection } = await supabaseAdmin
         .from("google_business_connections")
-        .select("access_token_ciphertext,refresh_token_ciphertext,token_expires_at,status,scopes")
+        .select("access_token_ciphertext,refresh_token_ciphertext,token_expires_at,status")
         .eq("workspace_id", member.workspace_id)
         .maybeSingle();
-      const { usableAccessToken, googleBusinessState, probeGoogleBusinessAccess, hasBusinessScope, MISSING_BUSINESS_SCOPE_MESSAGE, markGoogleConnectionUnusable } = await import("@/lib/google-business-sync.server");
-      if (!connection || connection.status === "revoked") {
-        const state = googleBusinessState(null);
-        await log("warning", state.message, null);
-        await recordHealth(state.code, state.message);
-        return { ok: false, status: 0, code: state.code, message: state.message };
+      if (!connection || connection.status !== "connected") {
+        const message = "Google Business Profile is not connected yet.";
+        await log("warning", message, null);
+        await recordHealth("NOT_CONFIGURED", message);
+        return { ok: false, status: 0, code: "NOT_CONFIGURED" as const, message };
       }
-      if (!hasBusinessScope(connection.scopes)) {
-        await markGoogleConnectionUnusable(supabaseAdmin, member.workspace_id, MISSING_BUSINESS_SCOPE_MESSAGE);
-        await log("error", MISSING_BUSINESS_SCOPE_MESSAGE, null);
-        await recordHealth("INSUFFICIENT_SCOPE", MISSING_BUSINESS_SCOPE_MESSAGE);
-        return { ok: false, status: 0, code: "INSUFFICIENT_SCOPE" as const, message: MISSING_BUSINESS_SCOPE_MESSAGE };
-      }
+      const { usableAccessToken } = await import("@/lib/google-business-sync.server");
       try {
         const token = await usableAccessToken(supabaseAdmin, member.workspace_id, connection as any);
-        const probe = await probeGoogleBusinessAccess(token);
-        const ok = probe.code === "CONNECTED";
-        // The stored row follows the live answer, so every screen reports the same state.
-        await supabaseAdmin.from("google_business_connections").update(ok ? { status: "connected", last_error: null } : { last_error: probe.message }).eq("workspace_id", member.workspace_id);
-        await supabaseAdmin.from("connected_platforms").update(ok ? { status: "connected", last_sync_error: null } : { status: "error", last_sync_error: probe.message }).eq("workspace_id", member.workspace_id).eq("platform", "google");
-        await log(ok ? "info" : "error", probe.message, probe.httpStatus);
-        await recordHealth(probe.code, probe.message, ok);
-        return { ok, status: probe.httpStatus, code: probe.code, message: probe.message };
+        const response = await fetch("https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=1", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const ok = response.ok;
+        await log(ok ? "info" : "error", ok ? "Google Business Profile API reachable." : `Google returned HTTP ${response.status}.`, response.status);
+        return { ok, status: response.status, message: ok ? "Google Business Profile API reachable." : `Google returned HTTP ${response.status}.` };
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : "Google test failed.";
-        const code = /expired|reconnect/i.test(message) ? ("AUTHENTICATION_FAILED" as const) : ("PROVIDER_ERROR" as const);
         await log("error", message, null);
-        await recordHealth(code, message);
-        return { ok: false, status: 0, code, message };
+        return { ok: false, status: 0, message };
       }
     }
 
@@ -383,9 +336,6 @@ export const testIntegration = createServerFn({ method: "POST" })
 
     if (definition.kind === "api_key") {
       result = await providers.testApiKeyProvider(definition.id, row?.account_ref ?? null, creds);
-    } else if (definition.id === "twitter" && !row?.access_token_ciphertext && providers.envValue(["TWITTER_BEARER_TOKEN"], creds)) {
-      // No user authorization yet, but an app-only bearer token is saved: test with it.
-      result = await providers.testTwitterAppOnly(creds);
     } else {
       if (!row?.access_token_ciphertext) {
         const message = `${definition.label} is not connected yet.`;
@@ -395,45 +345,21 @@ export const testIntegration = createServerFn({ method: "POST" })
       }
       const { decryptValue, encryptValue } = await import("@/lib/integrations/crypto.server");
       let accessToken = await decryptValue(row.access_token_ciphertext);
-      const refreshWindowMs = data.provider === "instagram" ? 7 * 24 * 60 * 60 * 1000 : 120_000;
-      const expiresSoon = row.token_expires_at
-        ? Date.parse(row.token_expires_at) - Date.now() < refreshWindowMs
-        : false;
+      const expiresSoon = row.token_expires_at ? Date.parse(row.token_expires_at) - Date.now() < 120_000 : false;
       if (expiresSoon) {
-        if (!row.refresh_token_ciphertext && data.provider !== "instagram") {
+        if (!row.refresh_token_ciphertext) {
           await supabaseAdmin
             .from("integration_connections")
-            .update({
-              status: "expired",
-              last_error:
-                "Access expired and the provider issued no refresh token. Reconnect the account.",
-            })
+            .update({ status: "expired", last_error: "Access expired and the provider issued no refresh token. Reconnect the account." })
             .eq("id", row.id);
-          await log(
-            "warning",
-            "Access token expired without a refresh token.",
-            null,
-            "token_expired",
-          );
+          await log("warning", "Access token expired without a refresh token.", null, "token_expired");
           await recordHealth("TOKEN_EXPIRED", "Access expired. Reconnect this account.");
-          return {
-            ok: false,
-            status: 0,
-            code: "TOKEN_EXPIRED" as const,
-            message: "Access expired. Reconnect this account.",
-          };
+          return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message: "Access expired. Reconnect this account." };
         }
         try {
-          const refreshCredential =
-            data.provider === "instagram" ? accessToken : row.refresh_token_ciphertext;
-          if (!refreshCredential) {
-            throw new Error("No refresh credential is available.");
-          }
           const refreshed = await providers.refreshAccessToken(
             data.provider,
-            data.provider === "instagram"
-              ? refreshCredential
-              : await decryptValue(refreshCredential),
+            await decryptValue(row.refresh_token_ciphertext),
             creds,
           );
           accessToken = refreshed.accessToken;
@@ -451,16 +377,8 @@ export const testIntegration = createServerFn({ method: "POST" })
             .eq("id", row.id);
           await log("info", "Access token refreshed.", null, "token_refreshed");
         } catch (caught) {
-          const message =
-            data.provider === "instagram"
-              ? "Instagram token refresh failed. Reconnect the account."
-              : caught instanceof Error
-                ? caught.message
-                : "Token refresh failed.";
-          await supabaseAdmin
-            .from("integration_connections")
-            .update({ status: "expired", last_error: message })
-            .eq("id", row.id);
+          const message = caught instanceof Error ? caught.message : "Token refresh failed.";
+          await supabaseAdmin.from("integration_connections").update({ status: "expired", last_error: message }).eq("id", row.id);
           await log("error", message, null, "token_refresh_failed");
           await recordHealth("TOKEN_EXPIRED", message);
           return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message };
@@ -468,7 +386,7 @@ export const testIntegration = createServerFn({ method: "POST" })
       }
       const config = providers.OAUTH_PROVIDERS[data.provider];
       if (!config) throw new Error("Unknown integration.");
-      result = await config.test(accessToken, creds);
+      result = await config.test(accessToken);
     }
 
     if (result.ok) {
@@ -569,7 +487,7 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
       provider: data.provider,
       event_type: "disconnected",
       level: "info",
-      message: `Stored connection removed. ${revokeNote}`.slice(0, 500),
+      message: `Connection removed and stored credentials deleted. ${revokeNote}`.slice(0, 500),
     });
     return { disconnected: true, revokeNote };
   });
@@ -608,9 +526,7 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
     if (saved.length === 0) throw new Error("Enter at least one credential value.");
 
     const bag = await credentials.loadProviderCredentials(supabaseAdmin, member.workspace_id, data.provider);
-    const missing = providers.missingRequiredSecrets(data.provider, bag);
-    // API-key results measured with the previous credentials must not be reused by scans.
-    await forgetCachedHealth(supabaseAdmin, member.workspace_id, data.provider, { apiKeyOnly: true });
+    const missing = definition.requiredSecrets.filter((key) => !bag[key] && !process.env[key]);
 
     const log = (level: string, message: string, eventType: string, httpStatus: number | null = null) =>
       supabaseAdmin.from("integration_events").insert({
@@ -652,28 +568,8 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
         },
         { onConflict: "workspace_id,provider" },
       );
-      const checkedAt = new Date().toISOString();
-      await supabaseAdmin.from("integration_health").upsert(
-        {
-          workspace_id: member.workspace_id,
-          provider: data.provider,
-          status: result.ok ? "healthy" : "unhealthy",
-          latency_ms: null,
-          outcome_code: result.code ?? (result.ok ? "CONNECTED" : "PROVIDER_ERROR"),
-          last_error: result.ok ? null : result.message,
-          last_checked_at: checkedAt,
-          ...(result.ok ? { last_ok_at: checkedAt } : {}),
-        },
-        { onConflict: "workspace_id,provider" },
-      );
       await log(result.ok ? "info" : "error", result.message, "connection_test", result.status || null);
       return { saved: saved.length, verified: result.ok, message: result.message };
-    }
-
-    if (definition.id === "meta_business") {
-      const result = await providers.testMetaAppCredentials(bag);
-      await log(result.code === "APPROVAL_REQUIRED" ? "warning" : "error", result.message, "connection_test", result.status || null);
-      return { saved: saved.length, verified: false, message: result.message };
     }
 
     return {
@@ -695,7 +591,6 @@ export const revokeProviderCredentials = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { deleteProviderCredentials } = await import("@/lib/integrations/credentials.server");
     await deleteProviderCredentials(supabaseAdmin, member.workspace_id, data.provider);
-    await forgetCachedHealth(supabaseAdmin, member.workspace_id, data.provider);
     await supabaseAdmin
       .from("integration_connections")
       .delete()
@@ -777,10 +672,8 @@ export const getIntegrationHealth = createServerFn({ method: "GET" })
       .select("platform,last_synced_at")
       .eq("workspace_id", wid);
     for (const row of platforms ?? []) {
-      // connected_platforms stores Google Business as "google"; the registry id is "google_business".
-      const provider = row.platform === "google" ? "google_business" : row.platform;
-      const existing = syncBy.get(provider);
-      if (row.last_synced_at && (!existing || row.last_synced_at > existing)) syncBy.set(provider, row.last_synced_at);
+      const existing = syncBy.get(row.platform);
+      if (row.last_synced_at && (!existing || row.last_synced_at > existing)) syncBy.set(row.platform, row.last_synced_at);
     }
 
     const items: ProviderHealth[] = INTEGRATIONS.map((definition) => {
@@ -889,10 +782,10 @@ export const getIntegrationOverview = createServerFn({ method: "GET" })
         .eq("workspace_id", member.workspace_id),
       supabaseAdmin
         .from("integration_api_logs")
-        .select("provider,created_at,http_status")
+        .select("provider,created_at,status_code")
         .eq("workspace_id", member.workspace_id)
         .gte("created_at", since)
-        .gte("http_status", 400),
+        .gte("status_code", 400),
       supabaseAdmin
         .from("audit_logs")
         .select("id,action,target_type,target_id,created_at")

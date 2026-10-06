@@ -12,9 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
-import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedAlertsRouteImport } from './routes/_authenticated/alerts'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedCompetitorsRouteImport } from './routes/_authenticated/competitors'
@@ -40,7 +38,6 @@ import { Route as ApiPublicLicenseActivateRouteImport } from './routes/api/publi
 import { Route as ApiPublicLicenseDownloadRouteImport } from './routes/api/public/license/download'
 import { Route as ApiPublicLicenseUpdateCheckRouteImport } from './routes/api/public/license/update-check'
 import { Route as ApiPublicLicenseValidateRouteImport } from './routes/api/public/license/validate'
-import { Route as ApiPublicYoutubeCallbackRouteImport } from './routes/api/public/youtube/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -56,19 +53,9 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAlertsRoute = AuthenticatedAlertsRouteImport.update({
@@ -206,19 +193,11 @@ const ApiPublicLicenseValidateRoute =
     path: '/api/public/license/validate',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicYoutubeCallbackRoute =
-  ApiPublicYoutubeCallbackRouteImport.update({
-    id: '/api/public/youtube/callback',
-    path: '/api/public/youtube/callback',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/terms': typeof TermsRoute
   '/alerts': typeof AuthenticatedAlertsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/competitors': typeof AuthenticatedCompetitorsRoute
@@ -244,14 +223,11 @@ export interface FileRoutesByFullPath {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
-  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/terms': typeof TermsRoute
   '/alerts': typeof AuthenticatedAlertsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/competitors': typeof AuthenticatedCompetitorsRoute
@@ -277,16 +253,13 @@ export interface FileRoutesByTo {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
-  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
-  '/terms': typeof TermsRoute
   '/_authenticated/alerts': typeof AuthenticatedAlertsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/competitors': typeof AuthenticatedCompetitorsRoute
@@ -312,16 +285,13 @@ export interface FileRoutesById {
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
-  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/auth'
-    | '/privacy'
     | '/reset-password'
-    | '/terms'
     | '/alerts'
     | '/analytics'
     | '/competitors'
@@ -347,14 +317,11 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
-    | '/api/public/youtube/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
-    | '/privacy'
     | '/reset-password'
-    | '/terms'
     | '/alerts'
     | '/analytics'
     | '/competitors'
@@ -380,15 +347,12 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
-    | '/api/public/youtube/callback'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
-    | '/privacy'
     | '/reset-password'
-    | '/terms'
     | '/_authenticated/alerts'
     | '/_authenticated/analytics'
     | '/_authenticated/competitors'
@@ -414,16 +378,13 @@ export interface FileRouteTypes {
     | '/api/public/license/download'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
-    | '/api/public/youtube/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
-  PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  TermsRoute: typeof TermsRoute
   ApiPublicRemovalScanRoute: typeof ApiPublicRemovalScanRoute
   ApiPublicGoogleBusinessCallbackRoute: typeof ApiPublicGoogleBusinessCallbackRoute
   ApiPublicIntegrationsCallbackRoute: typeof ApiPublicIntegrationsCallbackRoute
@@ -433,7 +394,6 @@ export interface RootRouteChildren {
   ApiPublicLicenseDownloadRoute: typeof ApiPublicLicenseDownloadRoute
   ApiPublicLicenseUpdateCheckRoute: typeof ApiPublicLicenseUpdateCheckRoute
   ApiPublicLicenseValidateRoute: typeof ApiPublicLicenseValidateRoute
-  ApiPublicYoutubeCallbackRoute: typeof ApiPublicYoutubeCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -459,25 +419,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/alerts': {
@@ -655,13 +601,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLicenseValidateRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/youtube/callback': {
-      id: '/api/public/youtube/callback'
-      path: '/api/public/youtube/callback'
-      fullPath: '/api/public/youtube/callback'
-      preLoaderRoute: typeof ApiPublicYoutubeCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -710,9 +649,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
-  PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  TermsRoute: TermsRoute,
   ApiPublicRemovalScanRoute: ApiPublicRemovalScanRoute,
   ApiPublicGoogleBusinessCallbackRoute: ApiPublicGoogleBusinessCallbackRoute,
   ApiPublicIntegrationsCallbackRoute: ApiPublicIntegrationsCallbackRoute,
@@ -722,7 +659,6 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicLicenseDownloadRoute: ApiPublicLicenseDownloadRoute,
   ApiPublicLicenseUpdateCheckRoute: ApiPublicLicenseUpdateCheckRoute,
   ApiPublicLicenseValidateRoute: ApiPublicLicenseValidateRoute,
-  ApiPublicYoutubeCallbackRoute: ApiPublicYoutubeCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

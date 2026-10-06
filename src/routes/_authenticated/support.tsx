@@ -128,8 +128,7 @@ function ContactChannels() {
       setEditing(false);
       void queryClient.invalidateQueries({ queryKey: ["support-settings"] });
     },
-    onError: (error: Error) =>
-      toast.error(/help ?url|http/i.test(error.message) ? "Help centre link must be a full http:// or https:// address." : error.message),
+    onError: (error: Error) => toast.error(error.message),
   });
 
   const start = () => {

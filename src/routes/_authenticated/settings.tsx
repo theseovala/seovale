@@ -13,10 +13,8 @@ import {
   ExternalLink,
   RefreshCw,
   Boxes,
-  ShieldCheck,
 } from "lucide-react";
 import { IntegrationManager } from "@/components/app/IntegrationManager";
-import { integrationById } from "@/lib/integrations/registry";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Section, PlatformIcon, StatusBadge, EmptyState } from "@/components/app/primitives";
 import { Button } from "@/components/ui/button";
@@ -35,9 +33,6 @@ import {
 import { platformName } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 import { disconnectGoogleBusiness, getGoogleBusinessConnection, startGoogleBusinessConnection, syncGoogleBusinessReviews } from "@/lib/google-business.functions";
-import { useGoogleDisclosure } from "@/components/legal/GoogleDisclosureDialog";
-import { PrivacyDataPanel } from "@/components/legal/PrivacyDataPanel";
-import { GOOGLE_BUSINESS_SCOPES, GOOGLE_DISCLOSURE_VERSION } from "@/lib/legal";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -64,14 +59,8 @@ const tabs = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "locations", label: "Locations", icon: MapPin },
   { id: "account", label: "Account", icon: CreditCard },
-  { id: "privacy", label: "Privacy & data", icon: ShieldCheck },
 ] as const;
 
-/**
- * A labelled text field. Omitting `onChange` marks the value as one the account
- * owner cannot edit here, and the input is rendered read-only so it cannot
- * accept typing it would then discard.
- */
 function Field({
   label,
   value,
@@ -80,22 +69,16 @@ function Field({
 }: {
   label: string;
   value: string;
-  onChange?: (v: string) => void;
+  onChange: (v: string) => void;
   hint?: string;
 }) {
-  const readOnly = !onChange;
   return (
     <label className="block">
       <span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{label}</span>
       <input
         value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        readOnly={readOnly}
-        aria-readonly={readOnly}
-        className={cn(
-          "h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40",
-          readOnly && "cursor-default bg-muted/50 text-muted-foreground focus:ring-0",
-        )}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40"
       />
       {hint && <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>}
     </label>
@@ -154,12 +137,11 @@ function SettingsPage() {
 
         <div className="min-w-0 space-y-4">
           {tab === "business" && <BusinessProfileTab />}
-          {tab === "platforms" && <PlatformsTab onOpenIntegrations={() => setTab("integrations")} />}
+          {tab === "platforms" && <PlatformsTab />}
           {tab === "integrations" && <IntegrationManager />}
           {tab === "notifications" && <NotificationsTab />}
           {tab === "locations" && <LocationsTab />}
           {tab === "account" && <AccountTab />}
-          {tab === "privacy" && <PrivacyDataPanel />}
         </div>
       </div>
     </AppShell>
@@ -195,18 +177,8 @@ function BusinessProfileTab() {
     setForm((f) => ({ ...f, [key]: value }));
 
   const save = () => {
-    // Only the fields this form edits are sent. The loaded row also carries
-    // id / workspace_id and the notification toggles, which must not be
-    // written back from here.
-    const patch: Partial<BrandSettings> = {};
-    if (form.brand_name !== undefined) patch.brand_name = form.brand_name;
-    if (form.industry !== undefined) patch.industry = form.industry;
-    if (form.website !== undefined) patch.website = form.website;
-    if (form.reply_tone !== undefined) patch.reply_tone = form.reply_tone;
-    if (form.reply_signature !== undefined) patch.reply_signature = form.reply_signature;
-    if (form.alert_email !== undefined) patch.alert_email = form.alert_email;
     update.mutate(
-      { id: brand.id, patch },
+      { id: brand.id, patch: form },
       {
         onSuccess: () => toast.success("Business profile updated"),
         onError: (err) => toast.error(err.message || "Could not save changes"),
@@ -222,7 +194,7 @@ function BusinessProfileTab() {
         <Field label="Website" value={form.website ?? ""} onChange={(v) => set("website", v)} />
         <Field label="Reply tone" value={form.reply_tone ?? ""} onChange={(v) => set("reply_tone", v)} hint="Used when drafting AI replies to reviews." />
         <Field label="Reply signature" value={form.reply_signature ?? ""} onChange={(v) => set("reply_signature", v)} />
-        <Field label="Alert email" value={form.alert_email ?? ""} onChange={(v) => set("alert_email", v)} hint="Saved for when email delivery is connected — no emails are sent yet." />
+        <Field label="Alert email" value={form.alert_email ?? ""} onChange={(v) => set("alert_email", v)} />
       </div>
       <div className="mt-5 flex gap-2 border-t pt-4">
         <Button onClick={save} disabled={update.isPending}>
@@ -234,19 +206,8 @@ function BusinessProfileTab() {
   );
 }
 
-function PlatformsTab({ onOpenIntegrations }: { onOpenIntegrations: () => void }) {
+function PlatformsTab() {
   const { data: platformsList, isLoading } = useConnectedPlatforms();
-  // Non-Google platforms are connected through the Integration manager, which
-  // runs the real OAuth / API-key flow. Send the user there instead of a toast
-  // that does nothing.
-  const openInIntegrationManager = (platform: string, label: string) => {
-    if (integrationById(platform)) {
-      toast.message(`Connect ${label} from the Integration manager`);
-    } else {
-      toast.message(`${label} has no self-serve connection in the Integration manager yet`);
-    }
-    onOpenIntegrations();
-  };
   const disconnect = useDisconnectPlatform();
   const queryClient = useQueryClient();
   const statusFn = useServerFn(getGoogleBusinessConnection);
@@ -254,21 +215,17 @@ function PlatformsTab({ onOpenIntegrations }: { onOpenIntegrations: () => void }
   const syncFn = useServerFn(syncGoogleBusinessReviews);
   const disconnectGoogleFn = useServerFn(disconnectGoogleBusiness);
   const google = useQuery({ queryKey: ["google_business_connection"], queryFn: () => statusFn() });
-  const disclosure = useGoogleDisclosure();
   const connectGoogle = useMutation({
     mutationFn: ({ authWindow }: { authWindow: Window | null }) =>
-      startFn({ data: { origin: window.location.origin, disclosureVersion: GOOGLE_DISCLOSURE_VERSION } }).then((result) => ({ ...result, authWindow })),
+      startFn({ data: { origin: window.location.origin } }).then((result) => ({ ...result, authWindow })),
     onSuccess: ({ authorizationUrl, authWindow }) => {
       // Sandboxed preview iframes may silently block navigating a pre-opened
       // popup (no exception — the popup just stays on about:blank). Try the
       // popup first, then verify it actually left about:blank; if not, fall
       // back to a fresh popup and finally to a full-tab redirect.
       const assignFallback = () => {
-        // No "noopener" feature: with it window.open always returns null, so
-        // this tab was navigated away every time. Sever the opener by hand.
-        const popup = window.open(authorizationUrl, "_blank");
-        if (popup) popup.opener = null;
-        else window.location.assign(authorizationUrl);
+        const popup = window.open(authorizationUrl, "_blank", "noopener,noreferrer");
+        if (!popup) window.location.assign(authorizationUrl);
       };
       if (authWindow && !authWindow.closed) {
         try {
@@ -366,24 +323,15 @@ function PlatformsTab({ onOpenIntegrations }: { onOpenIntegrations: () => void }
                   disabled={isGoogle && (!google.data?.configured || connectGoogle.isPending)}
                   onClick={() => {
                     if (!isGoogle) {
-                      openInIntegrationManager(p.platform, p.display_name || platformName(p.platform));
+                      toast("This platform connection will be available in a future provider rollout.");
                       return;
                     }
-                    // The data-access disclosure comes first; its Continue click is
-                    // the user gesture that opens the Google window.
-                    disclosure.request({
-                      label: "Google Business Profile",
-                      scopes: GOOGLE_BUSINESS_SCOPES,
-                      businessProfile: true,
-                      run: () => {
-                        const authWindow = window.open("about:blank", "seovale-google-business");
-                        if (authWindow) {
-                          authWindow.document.title = "Connecting Google Business Profile…";
-                          authWindow.document.body.textContent = "Opening Google securely…";
-                        }
-                        connectGoogle.mutate({ authWindow });
-                      },
-                    });
+                    const authWindow = window.open("about:blank", "seovale-google-business");
+                    if (authWindow) {
+                      authWindow.document.title = "Connecting Google Business Profile…";
+                      authWindow.document.body.textContent = "Opening Google securely…";
+                    }
+                    connectGoogle.mutate({ authWindow });
                   }}
                 >
                   {connectGoogle.isPending && isGoogle && <Loader2 className="animate-spin" />}Connect
@@ -392,7 +340,7 @@ function PlatformsTab({ onOpenIntegrations }: { onOpenIntegrations: () => void }
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => openInIntegrationManager(p.platform, p.display_name || platformName(p.platform))}
+                  onClick={() => toast("This platform doesn't support self-serve connection. Submit a connection request and our team will set it up.")}
                 >
                   <ExternalLink /> Connection request
                 </Button>
@@ -401,7 +349,6 @@ function PlatformsTab({ onOpenIntegrations }: { onOpenIntegrations: () => void }
           );
         })}
       </ul>
-      {disclosure.dialog}
     </Section>
   );
 }
@@ -450,13 +397,6 @@ function NotificationsTab() {
           )
         }
       />
-      <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-        <Bell className="mt-0.5 size-4 shrink-0 text-primary" />
-        <span>
-          Email delivery is not connected yet (no email provider such as Resend is set up to send), so these preferences are
-          saved but no notification emails are sent. New alerts still appear on the Alerts page.
-        </span>
-      </div>
     </Section>
   );
 }
@@ -531,7 +471,7 @@ function AccountTab() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Full name" value={fullName} onChange={setFullName} />
         <Field label="Job title" value={jobTitle} onChange={setJobTitle} />
-        <Field label="Email" value={profile.email ?? ""} hint="Managed by your login provider." />
+        <Field label="Email" value={profile.email ?? ""} onChange={() => {}} hint="Managed by your login provider." />
       </div>
       <div className="mt-5 flex gap-2 border-t pt-4">
         <Button

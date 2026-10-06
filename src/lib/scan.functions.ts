@@ -19,20 +19,6 @@ async function workspace(context: Ctx) {
   return data as { workspace_id: string; role: string };
 }
 
-// Every scan makes dozens of outbound requests and an AI call, so a signed-in
-// account cannot start or re-run them without bound.
-const SCAN_CREATE_LIMIT_PER_HOUR = 30;
-const SCAN_RUN_LIMIT_PER_HOUR = 60;
-
-async function assertScanBudget(workspaceId: string, bucket: string, limit: number) {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { consumeAbuseLimit } = await import("@/lib/ops.server");
-  const budget = await consumeAbuseLimit(supabaseAdmin, bucket, workspaceId, limit, 3600);
-  if (!budget.allowed) {
-    throw new Error(`Too many scans were started from this workspace. Try again in ${Math.ceil(budget.retryAfterSeconds / 60)} minutes.`);
-  }
-}
-
 export const createScan = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ url: z.string().min(3).max(2000) }).parse(input))
@@ -68,7 +54,6 @@ export const createScan = createServerFn({ method: "POST" })
       .limit(1)
       .maybeSingle();
     if (active) return { id: active.id as string, url: active.target_url as string, domain: active.target_domain as string, reused: true };
-    await assertScanBudget(member.workspace_id, "scan_create", SCAN_CREATE_LIMIT_PER_HOUR);
     const { data: row, error } = await (context as Ctx).supabase
       .from("scans")
       .insert({
@@ -89,10 +74,9 @@ export const runScanNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { data: scan, error } = await (context as Ctx).supabase.from("scans").select("id,status,workspace_id").eq("id", data.id).single();
+    const { data: scan, error } = await (context as Ctx).supabase.from("scans").select("id,status").eq("id", data.id).single();
     if (error) throw error;
     if (!scan) throw new Error("Scan not found.");
-    await assertScanBudget(scan.workspace_id, "scan_run", SCAN_RUN_LIMIT_PER_HOUR);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { runScan } = await import("@/lib/scan/engine.server");
     try {
@@ -143,11 +127,10 @@ export const resumeScan = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const supabase = (context as Ctx).supabase;
-    const { data: scan, error } = await supabase.from("scans").select("id,status,attempts,max_attempts,workspace_id").eq("id", data.id).single();
+    const { data: scan, error } = await supabase.from("scans").select("id,status,attempts,max_attempts").eq("id", data.id).single();
     if (error) throw error;
     if (!["paused", "failed", "cancelled"].includes(scan.status)) throw new Error("Only a paused, failed or cancelled scan can be resumed.");
     if (scan.max_attempts && scan.attempts >= scan.max_attempts) throw new Error("This scan reached its maximum number of attempts.");
-    await assertScanBudget(scan.workspace_id, "scan_run", SCAN_RUN_LIMIT_PER_HOUR);
     await supabase.from("scans").update({ status: "retrying", error_message: null, completed_at: null }).eq("id", data.id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { runScan } = await import("@/lib/scan/engine.server");
@@ -171,18 +154,6 @@ export const deleteScan = createServerFn({ method: "POST" })
     // RLS check first: the caller must be able to see this scan.
     const { data: scan, error } = await supabase.from("scans").select("id,workspace_id").eq("id", data.id).single();
     if (error) throw error;
-    // Deletion is permanent and runs with the service role, so it is limited to
-    // an owner or admin of the scan's own workspace — the same rule the database
-    // applies to deleting removal cases.
-    const { data: membership } = await supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("user_id", (context as Ctx).userId)
-      .eq("workspace_id", scan.workspace_id)
-      .maybeSingle();
-    if (membership?.role !== "owner" && membership?.role !== "admin") {
-      throw new Error("Only a workspace owner or admin can delete a scan.");
-    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     // finding_evidence cascades with its finding; business_facts and
     // data_conflicts survive on purpose — they belong to the business, not to
@@ -194,7 +165,6 @@ export const deleteScan = createServerFn({ method: "POST" })
     await supabaseAdmin.from("scans").delete().eq("id", scan.id);
     await supabaseAdmin.from("audit_logs").insert({
       workspace_id: scan.workspace_id,
-      actor: (context as Ctx).userId,
       action: "scan.deleted",
       target_type: "scan",
       target_id: scan.id,
@@ -309,13 +279,8 @@ export const getScan = createServerFn({ method: "GET" })
     };
   });
 
-export const csvCell = (value: unknown) => {
-  const raw = value === null || value === undefined || value === "" ? "DATA NOT AVAILABLE" : String(value);
-  // Titles, headers and text come from the scanned website, which anyone controls.
-  // A cell starting with = + - @ (or a tab/CR) runs as a formula when the export is
-  // opened in a spreadsheet, so it is prefixed with ' to keep it plain text.
-  // Plain numbers such as -3 are left untouched.
-  const text = /^[=+\-@\t\r]/.test(raw) && !/^[+-]?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+const csvCell = (value: unknown) => {
+  const text = value === null || value === undefined || value === "" ? "DATA NOT AVAILABLE" : String(value);
   return `"${text.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
 };
 

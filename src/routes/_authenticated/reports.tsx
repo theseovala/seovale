@@ -56,12 +56,8 @@ function ReportsPage() {
     },
     onError: (err: Error) => toast.error(err.message || "Could not generate report"),
   });
-  // Per-report pending state, so exporting one report only spins that row.
-  const [exportingIds, setExportingIds] = useState<string[]>([]);
   const exportMutation = useMutation({
     mutationFn: (id: string) => exportReportFn({ data: { id } }),
-    onMutate: (id) => setExportingIds((ids) => (ids.includes(id) ? ids : [...ids, id])),
-    onSettled: (_result, _error, id) => setExportingIds((ids) => ids.filter((x) => x !== id)),
     onSuccess: ({ pdfBase64, fileName }) => {
       const bytes = Uint8Array.from(atob(pdfBase64), (char) => char.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
@@ -218,8 +214,8 @@ function ReportsPage() {
                   {r.summary && <span className="mt-1 block whitespace-pre-line text-xs text-muted-foreground line-clamp-3">{r.summary}</span>}
                 </span>
                 <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${r.status === "ready" ? "bg-positive-soft text-positive" : "bg-info-soft text-info"}`}>{r.status}</span>
-                <Button size="icon" variant="ghost" title="Download PDF" disabled={exportingIds.includes(r.id)} onClick={() => exportMutation.mutate(r.id)}>
-                  {exportingIds.includes(r.id) ? <Loader2 className="animate-spin" /> : <Download />}
+                <Button size="icon" variant="ghost" title="Download PDF" disabled={exportMutation.isPending} onClick={() => exportMutation.mutate(r.id)}>
+                  {exportMutation.isPending ? <Loader2 className="animate-spin" /> : <Download />}
                   <span className="sr-only">Download PDF</span>
                 </Button>
               </li>

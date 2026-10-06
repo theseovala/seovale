@@ -10,9 +10,7 @@ import {
   startIntegrationOAuth,
   testIntegration,
 } from "@/lib/integrations.functions";
-import { integrationRedirectUri, type IntegrationDefinition } from "@/lib/integrations/registry";
-import { isGoogleOAuthProvider, useGoogleDisclosure } from "@/components/legal/GoogleDisclosureDialog";
-import { GOOGLE_DISCLOSURE_VERSION } from "@/lib/legal";
+import type { IntegrationDefinition } from "@/lib/integrations/registry";
 
 type ConsoleStep = { title: string; detail: string; link?: { href: string; label: string }; showRedirectUri?: boolean };
 
@@ -137,7 +135,8 @@ export function ProviderSetupGuide({
   const startFn = useServerFn(startIntegrationOAuth);
 
   const consoleSteps = CONSOLE_STEPS[definition.id] ?? genericSteps(definition);
-  const redirectUri = integrationRedirectUri(typeof window === "undefined" ? "" : window.location.origin, definition.id);
+  const redirectUri =
+    typeof window === "undefined" ? "" : `${window.location.origin}/api/public/integrations/callback`;
   const savedAccount = (accountRef ?? "").trim();
 
   const applyTest = (test: { ok: boolean; message: string }) => {
@@ -174,19 +173,11 @@ export function ProviderSetupGuide({
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const isGoogle = isGoogleOAuthProvider(definition.scopes);
-  const disclosure = useGoogleDisclosure();
   const connect = useMutation({
-    mutationFn: () =>
-      startFn({
-        data: { provider: definition.id, origin: window.location.origin, disclosureVersion: isGoogle ? GOOGLE_DISCLOSURE_VERSION : undefined },
-      }),
+    mutationFn: () => startFn({ data: { provider: definition.id, origin: window.location.origin } }),
     onSuccess: (r) => {
-      // "noopener" in the feature string makes window.open always return null,
-      // so open normally, sever the opener, and only fall back when blocked.
-      const popup = window.open(r.authorizationUrl, "_blank");
-      if (popup) popup.opener = null;
-      else window.location.assign(r.authorizationUrl);
+      const popup = window.open(r.authorizationUrl, "_blank", "noopener,noreferrer");
+      if (!popup) window.location.assign(r.authorizationUrl);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -315,15 +306,10 @@ export function ProviderSetupGuide({
                   size="sm"
                   className="mt-2"
                   disabled={!credentialsReady || connect.isPending}
-                  onClick={() =>
-                    isGoogle
-                      ? disclosure.request({ label: definition.label, scopes: definition.scopes, businessProfile: false, run: () => connect.mutate() })
-                      : connect.mutate()
-                  }
+                  onClick={() => connect.mutate()}
                 >
                   {connect.isPending && <Loader2 className="animate-spin" />} Connect {definition.label}
                 </Button>
-                {disclosure.dialog}
               </StepRow>
             )}
           </ol>

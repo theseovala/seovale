@@ -92,21 +92,6 @@ export function extractProfileLinks(html: string) {
   return found;
 }
 
-/** A provider test result younger than this is reused instead of spending another paid API call. */
-const HEALTH_REUSE_MS = 6 * 60 * 60 * 1000;
-
-function statusForCode(code: string): DiscoveryStatus {
-  return code === "NOT_CONFIGURED"
-    ? "not_configured"
-    : code === "APPROVAL_REQUIRED"
-      ? "approval_required"
-      : code === "UNAVAILABLE"
-        ? "unavailable"
-        : code === "AUTHENTICATION_FAILED" || code === "INVALID_CREDENTIALS" || code === "TOKEN_EXPIRED" || code === "INSUFFICIENT_SCOPE"
-          ? "auth_required"
-          : "failed";
-}
-
 async function verifyOne(
   admin: SupabaseClient,
   workspaceId: string,
@@ -129,27 +114,21 @@ async function verifyOne(
   if (definition.id === "google_business") {
     const { data: connection } = await admin
       .from("google_business_connections")
-      .select("status,token_expires_at,google_account_email,refresh_token_ciphertext,scopes,last_error")
+      .select("status,token_expires_at,google_account_email")
       .eq("workspace_id", workspaceId)
       .maybeSingle();
-    // Same rule as every other screen: connected only once Google has returned
-    // authorized data. Expired access tokens are not a failure — the stored
-    // refresh token renews them on the next Google call.
-    const { googleBusinessState } = await import("@/lib/google-business-sync.server");
-    const state = googleBusinessState(connection);
-    const evidence = connection ? { account: connection.google_account_email, code: state.code } : {};
-    const status: DiscoveryStatus =
-      state.code === "CONNECTED" ? "connected"
-      : state.code === "NOT_CONFIGURED" ? "not_configured"
-      : state.code === "APPROVAL_REQUIRED" ? "approval_required"
-      : state.code === "INSUFFICIENT_SCOPE" || state.code === "AUTHENTICATION_FAILED" ? "auth_required"
-      : "failed";
-    return { status, detail: state.message, evidence };
+    if (!connection || connection.status !== "connected") {
+      return { status: "not_configured", detail: "Google Business Profile is not connected yet.", evidence: {} };
+    }
+    const expired = connection.token_expires_at ? Date.parse(connection.token_expires_at) < Date.now() : false;
+    return expired
+      ? { status: "auth_required", detail: "The Google sign-in expired. Reconnect the account.", evidence: { account: connection.google_account_email } }
+      : { status: "connected", detail: "Google Business Profile connection is active.", evidence: { account: connection.google_account_email } };
   }
 
   const { data: row } = await admin
     .from("integration_connections")
-    .select("id,status,account_ref,account_label,access_token_ciphertext,refresh_token_ciphertext,token_expires_at,last_error")
+    .select("id,status,account_ref,account_label,access_token_ciphertext,token_expires_at,last_error")
     .eq("workspace_id", workspaceId)
     .eq("provider", definition.id)
     .maybeSingle();
@@ -158,41 +137,21 @@ async function verifyOne(
     if (!providers.providerConfigured(definition.id, creds)) {
       return { status: "not_configured", detail: `${definition.label} has no API key stored yet.`, evidence: {} };
     }
-    // A real provider result from the last few hours is reused so every scan does not spend paid API quota.
-    const { data: health } = await admin
-      .from("integration_health")
-      .select("status,outcome_code,last_error,last_checked_at")
-      .eq("workspace_id", workspaceId)
-      .eq("provider", definition.id)
-      .maybeSingle();
-    // A cached NOT_CONFIGURED predates the key that is configured now, so it is never reused.
-    if (health?.last_checked_at && health.outcome_code !== "NOT_CONFIGURED" && Date.now() - Date.parse(health.last_checked_at) < HEALTH_REUSE_MS) {
-      const checkedAt = health.last_checked_at;
-      if (health.status === "healthy") {
-        return { status: "connected", detail: `${definition.label} answered a real API test at ${checkedAt}.`, evidence: { account: row?.account_label ?? row?.account_ref ?? null, checkedAt } };
-      }
-      const cachedCode = health.outcome_code ?? "PROVIDER_ERROR";
-      return { status: statusForCode(cachedCode), detail: health.last_error ?? `${definition.label} failed its last API test.`, evidence: { code: cachedCode, checkedAt } };
-    }
-    // Configured and no recent result: verify with a real provider request rather than trusting the row.
+    // Configured: verify with a real provider request rather than trusting the row.
     const result = await providers.testApiKeyProvider(definition.id, row?.account_ref ?? null, creds);
-    const code = result.code ?? (result.ok ? "CONNECTED" : "PROVIDER_ERROR");
-    const checkedAt = new Date().toISOString();
-    await admin.from("integration_health").upsert(
-      {
-        workspace_id: workspaceId,
-        provider: definition.id,
-        status: result.ok ? "healthy" : "unhealthy",
-        latency_ms: null,
-        outcome_code: code,
-        last_error: result.ok ? null : result.message,
-        last_checked_at: checkedAt,
-        ...(result.ok ? { last_ok_at: checkedAt } : {}),
-      },
-      { onConflict: "workspace_id,provider" },
-    );
     if (result.ok) return { status: "connected", detail: result.message, evidence: { account: row?.account_label ?? row?.account_ref ?? null } };
-    return { status: statusForCode(code), detail: result.message, evidence: { code } };
+    const code = result.code ?? "PROVIDER_ERROR";
+    const status: DiscoveryStatus =
+      code === "NOT_CONFIGURED"
+        ? "not_configured"
+        : code === "APPROVAL_REQUIRED"
+          ? "approval_required"
+          : code === "UNAVAILABLE"
+            ? "unavailable"
+            : code === "AUTHENTICATION_FAILED" || code === "INVALID_CREDENTIALS" || code === "TOKEN_EXPIRED" || code === "INSUFFICIENT_SCOPE"
+              ? "auth_required"
+              : "failed";
+    return { status, detail: result.message, evidence: { code } };
   }
 
   // OAuth providers.
@@ -200,10 +159,6 @@ async function verifyOne(
     return { status: "not_configured", detail: `${definition.label} has not been connected yet.`, evidence: {} };
   }
   const expired = row.token_expires_at ? Date.parse(row.token_expires_at) - Date.now() < 60_000 : false;
-  if (expired && row.status !== "expired" && row.refresh_token_ciphertext) {
-    // Near-expiry access token with a stored refresh token: it is renewed on the next provider call.
-    return { status: "connected", detail: `${definition.label} is connected; the access token will be refreshed on next use.`, evidence: { account: row.account_label ?? row.account_ref } };
-  }
   if (expired || row.status === "expired") {
     return { status: "auth_required", detail: `${definition.label} access expired. Reconnect the account.`, evidence: { account: row.account_label } };
   }

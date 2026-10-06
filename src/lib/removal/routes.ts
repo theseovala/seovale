@@ -19,7 +19,6 @@
  */
 
 import { VIOLATIONS } from "@/lib/removal-scan.server";
-import type { PolicyCitation, PolicyLookup } from "./policy-sources.server";
 
 export const ROUTES = [
   "platform_policy_report",
@@ -58,31 +57,6 @@ export type PolicyBasis = {
   /** Set once a retrieved policy document is attached; until then, the marker. */
   source:
     { url: string; retrievedAt: string; jurisdiction: string | null } | "POLICY_SOURCE_REQUIRED";
-  /**
-   * Whether the official policy document was retrieved and actually contains a
-   * section for this violation. Absent on packages sealed before citations existed.
-   */
-  citationStatus?: "CITED" | "NO_SUPPORTED_POLICY_ROUTE";
-  /** The retrieved section, only when citationStatus is CITED. */
-  citation?: PolicyCitation;
-  /** Why nothing is cited, only when citationStatus is NO_SUPPORTED_POLICY_ROUTE. */
-  citationReason?: string;
-};
-
-/**
- * An official place a person files the route, verified reachable while this
- * was built. Only listed when the URL was fetched and answered 200.
- */
-export type OfficialDestination = { url: string; title: string; verifiedAt: string };
-
-/** HUMAN_ACTION_REQUIRED: what a person has to do for a route no endpoint can carry out. */
-export type HumanAction = {
-  required: true;
-  /** null when no official destination URL has been verified for this platform and route. */
-  destination: OfficialDestination | null;
-  whatToSubmit: string;
-  /** Evidence item ids from the package that should accompany the submission. */
-  evidenceRequired: string[];
 };
 
 export type DetectedRoute = {
@@ -95,8 +69,6 @@ export type DetectedRoute = {
   reason: string;
   /** What has to happen for the route to become actionable, when it is not. */
   blockedBy: string | null;
-  /** Present on routes a person has to file themselves (HUMAN_ACTION_REQUIRED). */
-  humanAction?: HumanAction;
 };
 
 export type Capability = {
@@ -131,65 +103,6 @@ function basisFor(violation: string): PolicyBasis {
   return {
     ruleName: RULE_NAMES[violation] ?? "Platform content policy",
     source: "POLICY_SOURCE_REQUIRED",
-  };
-}
-
-/**
- * The basis for the platform routes. A retrieved citation replaces the
- * POLICY_SOURCE_REQUIRED marker only when the lookup really found the section;
- * a failed lookup is recorded as NO_SUPPORTED_POLICY_ROUTE with its reason.
- * Without any lookup the basis is exactly what it was before citations existed.
- */
-function citedBasisFor(violation: string, lookup: PolicyLookup | null | undefined): PolicyBasis {
-  const basis = basisFor(violation);
-  if (!lookup) return basis;
-  if (lookup.status === "CITED" && lookup.citation.violation === violation) {
-    return {
-      ...basis,
-      source: { url: lookup.citation.finalUrl, retrievedAt: lookup.citation.retrievedAt, jurisdiction: null },
-      citationStatus: "CITED",
-      citation: lookup.citation,
-    };
-  }
-  return {
-    ...basis,
-    citationStatus: "NO_SUPPORTED_POLICY_ROUTE",
-    citationReason: lookup.status === "NO_SUPPORTED_POLICY_ROUTE" ? lookup.reason : "The citation was for a different violation.",
-  };
-}
-
-/**
- * Official human-action destinations. Each URL here was fetched during
- * implementation and answered HTTP 200 with the title recorded. Nothing is
- * listed for a platform or route that was not verified that way.
- */
-export const OFFICIAL_DESTINATIONS: Record<string, Partial<Record<Route, OfficialDestination>>> = {
-  google: {
-    platform_policy_report: {
-      url: "https://support.google.com/business/workflow/9945796",
-      title: "Manage your Google Business reviews - Google Business Profile Help",
-      verifiedAt: "2026-09-25",
-    },
-  },
-};
-
-const EVIDENCE_FOR_FILING = ["review_content", "review_content_hash", "review_identity", "review_location", "policy_classification"];
-
-function humanActionFor(platform: string, route: Route, basis: PolicyBasis): HumanAction {
-  const cited =
-    basis.citationStatus === "CITED" && basis.citation
-      ? `the policy section "${basis.citation.section}" of "${basis.citation.title}"`
-      : "the policy category named in the package (no retrieved section could be cited)";
-  const what: Partial<Record<Route, string>> = {
-    platform_policy_report: `Report the review through ${platform}'s own reporting flow, choosing the reason that matches ${cited}. Include the captured review text and identifiers from the evidence package.`,
-    platform_appeal: `Appeal the decision through ${platform}'s own appeal flow, quoting the platform's answer, the captured review text and ${cited}.`,
-    business_support_escalation: `Contact ${platform} business support with the report reference, the captured review text and ${cited}.`,
-  };
-  return {
-    required: true,
-    destination: OFFICIAL_DESTINATIONS[platform]?.[route] ?? null,
-    whatToSubmit: what[route] ?? "Submit through the platform's own interface.",
-    evidenceRequired: [...EVIDENCE_FOR_FILING, `policy_basis_${route}`],
   };
 }
 
@@ -241,18 +154,11 @@ export function detectRoutes(input: {
   capability: Capability;
   /** True when the provider has already rejected a report on this case. */
   priorRejection?: boolean;
-  /**
-   * The result of looking the violation up in the platform's retrieved policy
-   * document. Omitted: the platform routes stay POLICY_SOURCE_REQUIRED.
-   */
-  policyLookup?: PolicyLookup | null;
 }): DetectedRoute[] {
   const { platform, violation, capability } = input;
   if (!(VIOLATIONS as readonly string[]).includes(violation)) return [];
 
-  // The legal routes keep the uncited basis: a platform policy is not a legal authority.
   const basis = basisFor(violation);
-  const platformBasis = citedBasisFor(violation, input.policyLookup);
   const detected: DetectedRoute[] = [];
 
   // 1. The platform's own policy report. Always first: it is the channel the
@@ -261,16 +167,12 @@ export function detectRoutes(input: {
     route: "platform_policy_report",
     rank: 1,
     actionState: "MANUAL_ACTION_REQUIRED",
-    policyBasis: platformBasis,
-    reason:
-      platformBasis.citationStatus === "CITED" && platformBasis.citation
-        ? `The AI classifier proposed ${violation} as a candidate violation. The retrieved policy section "${platformBasis.citation.section}" covers that category; a person should confirm the review fits it before filing.`
-        : `The AI classifier proposed ${violation} as a candidate violation of the platform content policy; a person should confirm it before filing.`,
+    policyBasis: basis,
+    reason: `The review was classified as ${violation}, which the platform content policy prohibits.`,
     blockedBy:
       platform === "google"
         ? "Google publishes no API for reporting a review. The report has to be filed through the Google reviews management interface."
         : `No reporting API is implemented for ${platform}.`,
-    humanAction: humanActionFor(platform, "platform_policy_report", platformBasis),
   });
 
   // 2. An appeal only exists once the platform has actually decided against us.
@@ -279,10 +181,9 @@ export function detectRoutes(input: {
       route: "platform_appeal",
       rank: 2,
       actionState: "MANUAL_ACTION_REQUIRED",
-      policyBasis: platformBasis,
+      policyBasis: basis,
       reason: "The platform rejected the initial report, so its appeal channel becomes available.",
       blockedBy: "An appeal has to be submitted through the platform's own interface.",
-      humanAction: humanActionFor(platform, "platform_appeal", platformBasis),
     });
   }
 
@@ -291,12 +192,11 @@ export function detectRoutes(input: {
     route: "business_support_escalation",
     rank: input.priorRejection ? 3 : 2,
     actionState: "MANUAL_ACTION_REQUIRED",
-    policyBasis: platformBasis,
+    policyBasis: basis,
     reason:
       "Platform support can escalate a policy report that the automated review did not action.",
     blockedBy:
       "Support escalation is a human conversation with the platform; no endpoint exists for it.",
-    humanAction: humanActionFor(platform, "business_support_escalation", platformBasis),
   });
 
   // 4. Public reply. Removes nothing, but it is the one route that can act
@@ -339,40 +239,4 @@ export function detectRoutes(input: {
 /** The route that should be attempted first. null when the violation is unknown. */
 export function primaryRoute(routes: DetectedRoute[]): Route | null {
   return routes.length > 0 ? routes[0]!.route : null;
-}
-
-/**
- * The policy lookup already sealed into a case's routes, so re-detecting the
- * routes (e.g. once the appeal opens) keeps the citation that was actually
- * retrieved instead of dropping it or fetching a different version silently.
- */
-export function lookupFromRoutes(routes: DetectedRoute[] | null | undefined): PolicyLookup | null {
-  const basis = (routes ?? []).find((r) => r.route === "platform_policy_report")?.policyBasis;
-  if (basis?.citationStatus === "CITED" && basis.citation) return { status: "CITED", citation: basis.citation };
-  if (basis?.citationStatus === "NO_SUPPORTED_POLICY_ROUTE") {
-    return { status: "NO_SUPPORTED_POLICY_ROUTE", reason: basis.citationReason ?? "No retrieved section covers this violation." };
-  }
-  return null;
-}
-
-/** Routes that must pass the human approval gate before a submission is recorded. */
-export const HUMAN_APPROVAL_ROUTES: readonly Route[] = ["legal_removal_request", "regulator_complaint", "court_order_evidence"];
-
-export function requiresHumanApproval(route: string): boolean {
-  return (HUMAN_APPROVAL_ROUTES as readonly string[]).includes(route);
-}
-
-/**
- * The human approval gate. A legal, regulator or court submission is recorded
- * only for a workspace owner or admin who explicitly confirms that a person
- * approved it. Throws otherwise; other routes pass through.
- */
-export function assertHumanApproval(input: { route: string; role: string; humanApproved?: boolean | undefined }): void {
-  if (!requiresHumanApproval(input.route)) return;
-  if (input.role !== "owner" && input.role !== "admin") {
-    throw new Error("Only a workspace owner or admin can record a legal, regulator or court submission.");
-  }
-  if (input.humanApproved !== true) {
-    throw new Error("Confirm that this legal submission was approved by a person before recording it.");
-  }
 }

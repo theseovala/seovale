@@ -85,15 +85,7 @@ export async function requireStepUp(db: Db, userId: string, action: SensitiveAct
     });
     throw new Error(`STEP_UP_REQUIRED:${action}`);
   }
-  // Conditional on used_at still being null, so two parallel requests cannot both
-  // spend the same one-time grant: only the one whose update lands proceeds.
-  const { data: consumed } = await db
-    .from("admin_step_up")
-    .update({ used_at: new Date().toISOString() })
-    .eq("id", data.id)
-    .is("used_at", null)
-    .select("id");
-  if (!consumed?.length) throw new Error(`STEP_UP_REQUIRED:${action}`);
+  await db.from("admin_step_up").update({ used_at: new Date().toISOString() }).eq("id", data.id);
 }
 
 export async function grantStepUp(db: Db, userId: string, action: string) {

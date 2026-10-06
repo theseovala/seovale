@@ -58,48 +58,6 @@ const STATUS_TONE: Record<string, string> = {
 
 const when = (value?: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
-/** Two-step button for irreversible actions: the first click arms it, the second runs it. */
-function ConfirmAction({
-  label,
-  confirmLabel,
-  onConfirm,
-  disabled,
-  variant = "outline",
-}: {
-  label: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  disabled?: boolean;
-  variant?: "outline" | "ghost";
-}) {
-  const [armed, setArmed] = useState(false);
-  if (!armed) {
-    return (
-      <Button size="sm" variant={variant} onClick={() => setArmed(true)} disabled={disabled}>
-        {label}
-      </Button>
-    );
-  }
-  return (
-    <>
-      <Button
-        size="sm"
-        variant="destructive"
-        onClick={() => {
-          setArmed(false);
-          onConfirm();
-        }}
-        disabled={disabled}
-      >
-        {confirmLabel}
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setArmed(false)}>
-        Keep
-      </Button>
-    </>
-  );
-}
-
 function LicensingPage() {
   const queryClient = useQueryClient();
   const overview = useQuery({ queryKey: ["license-overview"], queryFn: () => getLicenseOverview(), refetchInterval: 60_000 });
@@ -196,27 +154,6 @@ function LicensingPage() {
         <div className="flex items-center gap-2 p-8 text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading licensing…
         </div>
-      </AppShell>
-    );
-  }
-
-  if (overview.error && !data) {
-    return (
-      <AppShell>
-        <PageHeader
-          title="Licensing & deployment control"
-          description="Every licence decision is enforced on the server. Sensitive actions need an authenticator code."
-        />
-        <EmptyState
-          icon={KeyRound}
-          title="Licensing data could not be loaded"
-          description={(overview.error as Error).message || "The request failed."}
-          action={
-            <Button variant="outline" size="sm" onClick={() => void overview.refetch()} disabled={overview.isFetching}>
-              {overview.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />} Try again
-            </Button>
-          }
-        />
       </AppShell>
     );
   }
@@ -436,12 +373,13 @@ function LicensingPage() {
                       </Button>
                     )}
                     {data.isStaff && license.status !== "revoked" && (
-                      <ConfirmAction
-                        label="Revoke"
-                        confirmLabel="Confirm revoke"
-                        onConfirm={() => run(() => setLicenseStatus({ data: { licenseId: license.id, status: "revoked", reason: "Revoked from admin panel" } }), "Licence revoked.")}
-                        disabled={busy}
-                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => run(() => setLicenseStatus({ data: { licenseId: license.id, status: "revoked", reason: "Revoked from admin panel" } }), "Licence revoked.")}
+                       disabled={busy}>
+                        Revoke
+                      </Button>
                     )}
                     {data.isStaff && (
                       <Button
@@ -551,12 +489,13 @@ function LicensingPage() {
                     <Badge className={release.signed ? STATUS_TONE["active"] : STATUS_TONE["pending"]}>{release.signed ? "Signed" : "Unsigned"}</Badge>
                     <Badge className={release.status === "published" ? STATUS_TONE["active"] : STATUS_TONE["pending"]}>{release.status}</Badge>
                     {data?.isStaff && release.status === "published" && (
-                      <ConfirmAction
-                        label="Roll back"
-                        confirmLabel="Confirm roll back"
-                        onConfirm={() => run(() => rollbackRelease({ data: { releaseId: release.id } }), "Release rolled back.")}
-                        disabled={busy}
-                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => run(() => rollbackRelease({ data: { releaseId: release.id } }), "Release rolled back.")}
+                      >
+                        Roll back
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -606,15 +545,16 @@ function LicensingPage() {
                 <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/50 px-3 py-1.5">
                   <span className="font-medium">{entry.email ?? entry.user_id}</span>
                   <Badge variant="outline">{entry.role.replace(/_/g, " ")}</Badge>
-                  <ConfirmAction
-                    label="Remove"
-                    confirmLabel="Confirm remove"
+                  <Button
+                    size="sm"
                     variant="ghost"
-                    onConfirm={() =>
+                    onClick={() =>
                       run(() => setAdminRole({ data: { email: entry.email, role: entry.role, grant: false } }), "Role removed.")
                     }
-                    disabled={!entry.email || busy}
-                  />
+                    disabled={!entry.email}
+                  >
+                    Remove
+                  </Button>
                 </div>
               ))}
             </div>

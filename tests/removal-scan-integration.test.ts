@@ -18,7 +18,6 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import type { EvidencePackage } from "../src/lib/removal/evidence.server";
 import type { DetectedRoute } from "../src/lib/removal/routes";
-import { setPolicyFetcher } from "../src/lib/removal/policy-sources.server";
 
 const FIXTURE_WORKSPACE = "22222222-2222-4222-8222-222222222222";
 const FIXTURE_USER = "33333333-3333-4333-8333-333333333333";
@@ -117,11 +116,6 @@ function stubClient() {
 }
 
 beforeAll(() => {
-  // No network in the unit suite: the official policy document is "unreachable",
-  // so every platform route must stay uncited (NO_SUPPORTED_POLICY_ROUTE).
-  setPolicyFetcher((async () => {
-    throw new Error("network disabled in unit tests");
-  }) as unknown as typeof fetch);
   mock.module("@/lib/ai-gateway.server", () => ({
     runAiText: async () => ({ output: stubAiOutput, model: STUB_MODEL }),
   }));
@@ -196,11 +190,6 @@ describe("runRemovalScan writes a complete, honest case", () => {
 
   test("carries the review URL the sync captured", () => {
     expect(firstCase().evidence.review.url).toBe(FIXTURE_REVIEWS[0]!.review_url);
-  });
-
-  test("records the stored place link at listing precision, not as a review permalink", () => {
-    expect(firstCase().evidence.review.urlPrecision).toBe("location_reviews");
-    expect(firstCase().evidence.review.urlDerivation).toBe("derived_from_place_id");
   });
 
   test("records the BEFORE phase and nothing beyond it", () => {
@@ -282,66 +271,5 @@ describe("runRemovalScan refuses invented model output", () => {
     stubAiOutput = "I am not JSON at all.";
     const result = await runScan();
     expect(result).toEqual({ checked: 2, flagged: 0 });
-  });
-});
-
-describe("runRemovalScan and the official policy document", () => {
-  test("an unreachable policy document is recorded as NO_SUPPORTED_POLICY_ROUTE, never cited", async () => {
-    stubAiOutput = JSON.stringify({
-      results: [{ id: FIXTURE_REVIEWS[0]!.id, violation: "spam_or_advertising", confidence: 0.9, rationale: "FIXTURE." }],
-    });
-    await runScan();
-    const report = firstCase().evidence.routes.find((r) => r.route === "platform_policy_report")!;
-    expect(report.policyBasis.citationStatus).toBe("NO_SUPPORTED_POLICY_ROUTE");
-    expect(report.policyBasis.citationReason).toContain("could not be retrieved");
-    const item = firstCase().evidence.items.find((i) => i.id === "policy_basis_platform_policy_report")!;
-    expect(item.value).toBe("POLICY_SOURCE_REQUIRED");
-    expect(item.confidence).toBe(0);
-    expect(item.source.detail).toContain("NO_SUPPORTED_POLICY_ROUTE");
-  });
-
-  test("a retrieved document with the section heading is cited, with URL, title, excerpt, time and hash", async () => {
-    const { setPolicyFetcher } = await import("../src/lib/removal/policy-sources.server");
-    // FIXTURE HTML, shaped like the Help Center markup: a section toggle heading and its text.
-    const html =
-      "<html><head><title>FIXTURE Prohibited &amp; restricted content</title></head><body>" +
-      '<a class="zippy" name="advertising_and_solicitation">Advertising &amp; solicitation</a>' +
-      "<div><p>FIXTURE: don&rsquo;t post content for advertising or solicitation purposes.</p></div>" +
-      '<a class="zippy" name="next">Unclear and Repetitive Content</a><div><p>FIXTURE other section.</p></div>' +
-      "</body></html>";
-    setPolicyFetcher((async () => {
-      const response = new Response(html, { status: 200, headers: { "content-type": "text/html" } });
-      Object.defineProperty(response, "url", { value: "https://fixture.test/final-policy" });
-      return response;
-    }) as unknown as typeof fetch);
-    try {
-      stubAiOutput = JSON.stringify({
-        results: [{ id: FIXTURE_REVIEWS[0]!.id, violation: "spam_or_advertising", confidence: 0.9, rationale: "FIXTURE." }],
-      });
-      await runScan();
-      const pkg = firstCase().evidence;
-      const report = pkg.routes.find((r) => r.route === "platform_policy_report")!;
-      expect(report.policyBasis.citationStatus).toBe("CITED");
-      expect(report.policyBasis.citation!.section).toBe("Advertising & solicitation");
-      expect(report.policyBasis.citation!.excerpt).toBe("FIXTURE: don’t post content for advertising or solicitation purposes.");
-      expect(report.policyBasis.citation!.finalUrl).toBe("https://fixture.test/final-policy");
-      expect(report.policyBasis.citation!.documentSha256).toMatch(/^[0-9a-f]{64}$/);
-      expect(report.humanAction!.destination!.url).toBe("https://support.google.com/business/workflow/9945796");
-      const item = pkg.items.find((i) => i.id === "policy_basis_platform_policy_report")!;
-      expect(item.source.type).toBe("retrieved_policy_document");
-      expect(item.source.url).toBe("https://fixture.test/final-policy");
-      expect(item.confidence).toBe(1);
-      // Legal routes never inherit a platform policy citation.
-      for (const route of pkg.routes.filter((r) => r.actionState === "LEGAL_SOURCE_REQUIRED")) {
-        expect(route.policyBasis.source).toBe("POLICY_SOURCE_REQUIRED");
-      }
-      const { verifyPackageIntegrity, validateEvidencePackage } = await import("../src/lib/removal/evidence.server");
-      expect(verifyPackageIntegrity(pkg)).toBe(true);
-      expect(() => validateEvidencePackage(pkg)).not.toThrow();
-    } finally {
-      setPolicyFetcher((async () => {
-        throw new Error("network disabled in unit tests");
-      }) as unknown as typeof fetch);
-    }
   });
 });

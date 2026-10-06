@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { ThumbsUp, ThumbsDown, Lightbulb, MessageCircleHeart, Sparkles, RefreshCcw } from "lucide-react";
@@ -41,32 +41,16 @@ function FeedbackPage() {
   const negative = themes.filter((t) => t.kind === "negative");
 
   const analyseFn = useServerFn(analyseFeedback);
-  // Each briefing is a billed AI call, so a result is kept per location for a
-  // while instead of being regenerated on every visit. "Refresh" still forces
-  // a new one.
-  const insightQuery = useQuery({
-    queryKey: ["feedback-insight", location],
-    queryFn: () => analyseFn({ data: { location } }),
-    enabled: !isLoading,
-    staleTime: 30 * 60_000,
-    gcTime: 60 * 60_000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    retry: false,
+  const insightMutation = useMutation({
+    mutationFn: () => analyseFn({ data: { location } }),
+    onError: (err: Error) => toast.error(err.message || "Could not analyse feedback."),
   });
-  const insightMutation = {
-    isPending: insightQuery.isFetching,
-    isError: insightQuery.isError && !insightQuery.isFetching,
-    error: insightQuery.error,
-    data: insightQuery.data,
-    mutate: () => void insightQuery.refetch(),
-  };
 
   useEffect(() => {
-    if (insightQuery.error) toast.error((insightQuery.error as Error).message || "Could not analyse feedback.");
-  }, [insightQuery.error]);
+    if (!isLoading) insightMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location, isLoading]);
 
-  const analysedCount = reviews.filter((r) => r.tags.length > 0).length;
   const totalMentions = themes.reduce((s, t) => s + t.mentions, 0);
   const topPraise = positive[0];
   const topComplaint = [...negative].sort((a, b) => b.mentions - a.mentions)[0];
@@ -80,7 +64,7 @@ function FeedbackPage() {
       />
 
       <div className="stagger mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Comments analysed" value={analysedCount.toLocaleString()} sub="Reviews with tagged themes" icon={MessageCircleHeart} tone="primary" />
+        <StatCard label="Comments analysed" value={reviews.length.toLocaleString()} sub="Reviews with tagged themes" icon={MessageCircleHeart} tone="primary" />
         <StatCard
           label="Top praise"
           value={topPraise ? topPraise.theme : "—"}
@@ -157,7 +141,7 @@ function FeedbackPage() {
                     )}>{t.sentiment}% positive</span>
                     {t.change === null ? null : <Trend value={t.change} suffix="pts" />}
                   </div>
-                  <SentimentBar className="mt-2 h-1.5" positive={t.sentiment} neutral={t.neutral} negative={t.negative} />
+                  <SentimentBar className="mt-2 h-1.5" positive={t.sentiment} neutral={Math.round((100 - t.sentiment) * 0.4)} negative={100 - t.sentiment - Math.round((100 - t.sentiment) * 0.4)} />
                 </li>
               ))}
             </ul>

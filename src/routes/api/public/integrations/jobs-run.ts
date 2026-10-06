@@ -11,24 +11,22 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
         const auth = request.headers.get("authorization") ?? "";
         const expected = process.env["LOVABLE_CRON_SECRET"];
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const token = auth.replace(/^Bearer\s+/i, "");
-        const safeEqual = (a: string, b: string) => {
-          const left = Buffer.from(a);
-          const right = Buffer.from(b);
-          return left.length === right.length && timingSafeEqual(left, right);
-        };
-        // Scheduler token first (works even when LOVABLE_CRON_SECRET is unset), then the platform cron secret.
-        // A failed lookup is retried once and then reported as 503, never as
-        // 401: a transient database error must not look like a wrong token.
-        const lookupToken = () => supabaseAdmin.from("scheduler_tokens").select("token").eq("name", "integration-jobs").maybeSingle();
-        let lookup = await lookupToken();
-        if (lookup.error) lookup = await lookupToken();
-        if (lookup.error && !expected) return new Response("Scheduler token lookup failed; retry later.", { status: 503 });
-        const tokenRow = lookup.data;
-        const ok =
-          token.length > 0 &&
-          ((typeof tokenRow?.token === "string" && safeEqual(token, tokenRow.token)) || (!!expected && safeEqual(token, expected)));
-        if (!ok) return new Response("Unauthorized", { status: 401 });
+        if (expected) {
+          const token = auth.replace(/^Bearer\s+/i, "");
+          const ok =
+            (token.length === expected.length && timingSafeEqual(Buffer.from(token), Buffer.from(expected))) ||
+            (await (async () => {
+              const { data } = await supabaseAdmin
+                .from("scheduler_tokens")
+                .select("token")
+                .eq("name", "integration-jobs")
+                .maybeSingle();
+              return Boolean(data && token === data.token);
+            })());
+          if (!ok) return new Response("Unauthorized", { status: 401 });
+        } else {
+          return new Response("Unauthorized", { status: 401 });
+        }
 
         const { claimDueJobs, completeJob, failJob } = await import("@/lib/jobs.server");
         const claimed = await claimDueJobs(supabaseAdmin, 25);
@@ -93,28 +91,7 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
           }
         }
 
-        // Keep every Google Business connection's stored state equal to Google's
-        // live answer. A failure here never fails the other scheduled work.
-        let google: Array<{ code: string; httpStatus: number | null; nextAction: string | null }> | { error: string } = [];
-        try {
-          const { reconcileGoogleConnections, googleNextAction } = await import("@/lib/google-business-sync.server");
-          google = (await reconcileGoogleConnections(supabaseAdmin)).map(({ code, httpStatus }) => ({ code, httpStatus, nextAction: googleNextAction(code)?.action ?? null }));
-        } catch (caught) {
-          google = { error: caught instanceof Error ? caught.message : "Google reconcile failed" };
-        }
-
-        // Hourly review sync, after the reconcile above so Google is only synced
-        // for connections Google has just proven usable. Each provider/workspace
-        // is isolated inside; this outer guard keeps the response intact.
-        let reviewSync: unknown;
-        try {
-          const { runScheduledReviewSyncs, publicSyncSummary } = await import("@/lib/reviews/scheduled-sync.server");
-          reviewSync = publicSyncSummary(await runScheduledReviewSyncs(supabaseAdmin));
-        } catch (caught) {
-          reviewSync = { error: caught instanceof Error ? caught.message : "Scheduled review sync failed" };
-        }
-
-        return Response.json({ ok: true, claimed: claimed.length, processed, failed, scansResumed, google, reviewSync });
+        return Response.json({ ok: true, claimed: claimed.length, processed, failed, scansResumed });
       },
     },
   },

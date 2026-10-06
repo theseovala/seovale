@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Inbox, ChevronDown, Reply, Sparkles, Send, Copy, Check, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
@@ -27,7 +27,6 @@ import { useApp, ALL_LOCATIONS } from "@/lib/app-context";
 import { draftReply } from "@/lib/ai.functions";
 import { syncGoogleBusinessReviews } from "@/lib/google-business.functions";
 import { syncTrustpilotReviews } from "@/lib/trustpilot.functions";
-import { listIntegrations } from "@/lib/integrations.functions";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/reviews")({
@@ -69,31 +68,14 @@ function ReviewCenter() {
 
   const { data: reviews = [], isLoading } = useLiveReviews();
   const { data: connected = [] } = useConnectedPlatforms();
-  // Trustpilot is connected in the Integration Manager, which records it on its
-  // own integration row; its connected_platforms row only turns "connected"
-  // after a first successful sync. Reading that row alone would never offer the
-  // first Trustpilot sync, so Trustpilot's own verified status counts too.
-  const listIntegrationsFn = useServerFn(listIntegrations);
-  const { data: integrations } = useQuery({ queryKey: ["integrations"], queryFn: () => listIntegrationsFn() });
-  const trustpilotReady = (integrations?.items ?? []).some((i) => i.provider === "trustpilot" && i.status === "connected");
-  const connectedIds = new Set([
-    ...connected.filter((c) => c.status === "connected").map((c) => c.platform),
-    ...(trustpilotReady ? ["trustpilot"] : []),
-  ]);
-
-  // Which review is open right now, readable from async callbacks, and the AI
-  // drafts already produced this session, keyed by review id.
-  const openIdRef = useRef<string | null>(null);
-  const aiDrafts = useRef(new Map<string, string>());
+  const connectedIds = new Set(
+    connected.filter((c) => c.status === "connected").map((c) => c.platform),
+  );
 
   const draftAi = useServerFn(draftReply);
   const aiMutation = useMutation({
     mutationFn: (id: string) => draftAi({ data: { reviewId: id } }),
-    onSuccess: (res, id) => {
-      aiDrafts.current.set(id, res.reply);
-      // A late draft only lands in the review it was requested for.
-      if (openIdRef.current === id) setDraft(res.reply);
-    },
+    onSuccess: (res) => setDraft(res.reply),
     onError: (e) => toast.error("Could not draft reply", { description: (e as Error).message }),
   });
   const publish = usePublishReply();
@@ -138,27 +120,17 @@ function ReviewCenter() {
   const openReview = (r: LiveReview) => {
     const isOpen = openId === r.id;
     setOpenId(isOpen ? null : r.id);
-    openIdRef.current = isOpen ? null : r.id;
-    const cached = aiDrafts.current.get(r.id);
-    setDraft(isOpen ? "" : (r.reply ?? cached ?? ""));
+    setDraft(isOpen ? "" : (r.reply ?? ""));
     setCopied(false);
-    // Auto-draft once per review per session; reopening reuses the draft.
-    const inFlight = aiMutation.isPending && aiMutation.variables === r.id;
-    if (!isOpen && !r.reply && cached === undefined && !inFlight) aiMutation.mutate(r.id);
+    if (!isOpen && !r.reply) aiMutation.mutate(r.id);
   };
 
-  const platformName = (id: string) => platforms[id as PlatformId]?.name ?? id;
-
-  const copyDraft = async (platformId: string) => {
+  const copyDraft = async () => {
     if (!draft.trim()) return;
-    try {
-      await navigator.clipboard.writeText(draft.trim());
-      setCopied(true);
-      toast.success(`Reply copied for ${platformName(platformId)}`);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      toast.error("Could not copy the reply", { description: "Clipboard access was blocked. Select the text and copy it manually." });
-    }
+    await navigator.clipboard.writeText(draft.trim());
+    setCopied(true);
+    toast.success("Reply copied for Google");
+    window.setTimeout(() => setCopied(false), 1800);
   };
 
   const queryClient = useQueryClient();
@@ -166,26 +138,21 @@ function ReviewCenter() {
   const syncTrustpilotFn = useServerFn(syncTrustpilotReviews);
   const syncAll = useMutation({
     mutationFn: async () => {
-      // Each provider syncs on its own: one provider failing (Google not yet
-      // approved, a Trustpilot error) never stops the others.
-      const jobs: Array<{ label: string; run: () => Promise<{ reviewsFound: number; reviewsCreated: number }> }> = [];
-      if (connectedIds.has("google")) jobs.push({ label: "Google", run: () => syncGoogleFn() });
-      if (connectedIds.has("trustpilot")) jobs.push({ label: "Trustpilot", run: () => syncTrustpilotFn() });
-      const settled = await Promise.allSettled(jobs.map((job) => job.run()));
-      return settled.map((outcome, index) =>
-        outcome.status === "fulfilled"
-          ? { ok: true, text: `${jobs[index]!.label}: ${outcome.value.reviewsFound} reviews (${outcome.value.reviewsCreated} new)` }
-          : { ok: false, text: `${jobs[index]!.label}: ${outcome.reason instanceof Error ? outcome.reason.message : "sync failed"}` },
-      );
+      const results: string[] = [];
+      if (connectedIds.has("google")) {
+        const r = await syncGoogleFn();
+        results.push(`Google: ${r.reviewsFound} reviews (${r.reviewsCreated} new)`);
+      }
+      if (connectedIds.has("trustpilot")) {
+        const r = await syncTrustpilotFn();
+        results.push(`Trustpilot: ${r.reviewsFound} reviews (${r.reviewsCreated} new)`);
+      }
+      return results;
     },
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ["reviews"] });
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
-      const failed = results.filter((r) => !r.ok);
-      const description = results.map((r) => r.text).join(" · ") || "Nothing to sync";
-      if (failed.length === 0) toast.success("Live sync complete", { description });
-      else if (failed.length === results.length) toast.error("Sync failed", { description });
-      else toast.warning("Sync partly complete", { description });
+      toast.success("Live sync complete", { description: results.join(" · ") || "Nothing to sync" });
     },
     onError: (e) => toast.error("Sync failed", { description: (e as Error).message }),
   });
@@ -405,15 +372,15 @@ function ReviewCenter() {
                       <div className="rounded-lg border bg-card p-4">
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-xs font-semibold text-muted-foreground">
-                            {r.reply ? "Update response" : aiMutation.isPending && aiMutation.variables === r.id ? "Creating reply draft…" : "AI reply draft"}
+                            {r.reply ? "Update response" : aiMutation.isPending ? "Creating reply draft…" : "AI reply draft"}
                           </p>
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={aiMutation.isPending && aiMutation.variables === r.id}
+                            disabled={aiMutation.isPending}
                             onClick={() => aiMutation.mutate(r.id)}
                           >
-                            <Sparkles /> {aiMutation.isPending && aiMutation.variables === r.id ? "Drafting…" : "Write with AI"}
+                            <Sparkles /> {aiMutation.isPending ? "Drafting…" : "Write with AI"}
                           </Button>
                         </div>
                         <textarea
@@ -428,9 +395,9 @@ function ReviewCenter() {
                             size="sm"
                             variant="outline"
                             disabled={!draft.trim()}
-                            onClick={() => void copyDraft(r.platform)}
+                            onClick={() => void copyDraft()}
                           >
-                            {copied ? <Check /> : <Copy />} {copied ? "Copied" : `Copy for ${platformName(r.platform)}`}
+                            {copied ? <Check /> : <Copy />} {copied ? "Copied" : "Copy for Google"}
                           </Button>
                           <Button
                             size="sm"
@@ -439,16 +406,13 @@ function ReviewCenter() {
                               publish.mutate(
                                 { id: r.id, reply: draft.trim() },
                                 {
-                                  onSuccess: (res) =>
-                                    res.postedToGoogle
-                                      ? toast.success("Reply published on Google", { description: `Posted to Google and saved for ${r.author}.` })
-                                      : toast.success(`Reply saved — copy it to ${platformName(r.platform)} to publish`, { description: res.notPostedReason ?? `No posting API is connected for ${platformName(r.platform)}.` }),
+                                  onSuccess: () => toast.success("Response published", { description: `Reply saved for ${r.author}.` }),
                                   onError: (e) => toast.error("Could not publish", { description: (e as Error).message }),
                                 },
                               )
                             }
                           >
-                            <Send /> {publish.isPending ? "Publishing…" : r.platform === "google" ? "Publish" : "Save reply"}
+                            <Send /> {publish.isPending ? "Publishing…" : "Publish"}
                           </Button>
                         </div>
                       </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ShieldX, ScanEye, RefreshCw, Send, CheckCircle2, XCircle, Ban, Sparkles, FileSearch } from "lucide-react";
+import { ShieldX, ScanEye, RefreshCw, Send, CheckCircle2, XCircle, Ban, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Section, StatCard, EmptyState, Stars } from "@/components/app/primitives";
@@ -10,9 +10,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { currentWorkspaceId } from "@/lib/seovale-db";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -21,29 +19,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  autoRecheckRemovalCase,
   draftRemovalReply,
-  getRemovalCaseDetail,
   getScanSchedule,
   publishRemovalReply,
-  recordProviderResponse,
-  recordRecheckResult,
-  recordSubmission,
   scanReviewsForRemoval,
   updateRemovalCase,
   updateScanSchedule,
 } from "@/lib/removal.functions";
 import { cn } from "@/lib/utils";
-
-/** Copies text, reporting a blocked clipboard instead of failing silently. */
-async function copyText(text: string, success: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(success);
-  } catch {
-    toast.error("Could not copy", { description: "Clipboard access was blocked. Select the text and copy it manually." });
-  }
-}
 
 
 function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () => void }) {
@@ -96,7 +79,10 @@ function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () 
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => void copyText(reply, "Reply copied")}
+              onClick={() => {
+                void navigator.clipboard.writeText(reply);
+                toast.success("Reply copied");
+              }}
             >
               Copy reply
             </Button>
@@ -142,11 +128,6 @@ type CaseRow = {
    * the status.
    */
   outcome: string | null;
-  /** How the outcome was established, from the sealed package. Names its source. */
-  outcome_basis: string | null;
-  /** The primary route and every route detected for the case. */
-  route: string | null;
-  routes: Array<{ route: string; actionState: string }> | null;
   model: string | null;
   created_at: string;
   reviews: {
@@ -207,455 +188,6 @@ function caseTone(row: CaseRow): string | undefined {
   return statusTone["dismissed"];
 }
 
-/**
- * Where a settled outcome came from. A recheck through the provider API is an
- * observation by the system; one a member recorded is their report, and is
- * labelled as that rather than as verified.
- */
-function outcomeSource(row: CaseRow): "provider_api" | "user_reported" | null {
-  const basis = row.outcome_basis ?? "";
-  if (basis.includes("provider_api_recheck")) return "provider_api";
-  if (basis.includes("user_reported_observation") || basis.includes("recheck_observation")) return "user_reported";
-  return null;
-}
-
-const routeLabels: Record<string, string> = {
-  platform_policy_report: "Platform policy report",
-  platform_appeal: "Platform appeal",
-  business_support_escalation: "Business support escalation",
-  public_reply_mitigation: "Public reply",
-  legal_removal_request: "Legal removal request",
-  regulator_complaint: "Regulator complaint",
-  court_order_evidence: "Court order evidence",
-};
-
-type LedgerView = {
-  phase: string;
-  at: string;
-  observation: string;
-  source?: { type?: string; detail?: string };
-  reviewVisible?: boolean | null;
-  providerResponse?: { channel: string; verbatim: string; reference: string | null; decision: string; receivedAt: string };
-};
-
-type RouteView = {
-  route: string;
-  actionState: string;
-  blockedBy: string | null;
-  policyBasis?: {
-    ruleName: string;
-    citationStatus?: "CITED" | "NO_SUPPORTED_POLICY_ROUTE";
-    citationReason?: string;
-    citation?: { finalUrl: string; title: string; section: string; excerpt: string; retrievedAt: string };
-  };
-  humanAction?: {
-    destination: { url: string; title: string; verifiedAt: string } | null;
-    whatToSubmit: string;
-    evidenceRequired: string[];
-  };
-};
-
-type CaseDetail = {
-  integrity: "intact" | "mismatch" | "not_sealed";
-  packageSha256: string | null;
-  providerDecision: string;
-  outcome: string;
-  outcomeBasis: string;
-  nextRecheckDue: string | null;
-  stage: string;
-  primaryRoute: RouteView | null;
-  latestSubmission: LedgerView | null;
-  latestResponse: LedgerView | null;
-  latestRecheck: LedgerView | null;
-  routes: RouteView[];
-  ledger: LedgerView[];
-};
-
-/** Legal, regulator and court routes need an owner or admin to confirm human approval. */
-const legalRoutes = ["legal_removal_request", "regulator_complaint", "court_order_evidence"];
-
-/** The evidence package and verification ledger of one case, integrity-checked server-side. */
-function CaseEvidence({ caseId }: { caseId: string }) {
-  const read = useServerFn(getRemovalCaseDetail);
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["removal_case_detail", caseId],
-    queryFn: async () => (await read({ data: { caseId } })) as unknown as CaseDetail,
-  });
-  if (isLoading) return <p className="mt-3 text-xs text-muted-foreground">Loading evidence…</p>;
-  if (error || !data) return <p className="mt-3 text-xs text-destructive">Could not load the evidence package.</p>;
-  const primary = data.primaryRoute;
-  const citation = primary?.policyBasis?.citationStatus === "CITED" ? primary.policyBasis.citation : undefined;
-  return (
-    <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
-      <div>
-        <span className="font-semibold">Stage: </span>
-        {data.stage}
-      </div>
-      <div>
-        <span className="font-semibold">Policy citation: </span>
-        {citation ? (
-          <>
-            <a href={citation.finalUrl} target="_blank" rel="noopener noreferrer" className="underline">
-              {citation.title}
-            </a>
-            {" "}— section "{citation.section}", retrieved {new Date(citation.retrievedAt).toLocaleString()}
-            <p className="mt-1 rounded-lg bg-muted/60 px-3 py-2 text-muted-foreground">"{citation.excerpt}"</p>
-          </>
-        ) : (
-          <>
-            No supported policy route
-            {primary?.policyBasis?.citationReason ? ` — ${primary.policyBasis.citationReason}` : " — no retrieved policy document is attached to this case."}
-          </>
-        )}
-      </div>
-      {primary && (
-        <div>
-          <span className="font-semibold">Recommended route: </span>
-          {routeLabels[primary.route] ?? primary.route}
-          {primary.humanAction && (
-            <>
-              {" "}· HUMAN_ACTION_REQUIRED
-              <div className="mt-1">{primary.humanAction.whatToSubmit}</div>
-              <div className="mt-1">
-                <span className="font-semibold">Official destination: </span>
-                {primary.humanAction.destination ? (
-                  <a href={primary.humanAction.destination.url} target="_blank" rel="noopener noreferrer" className="underline">
-                    {primary.humanAction.destination.title}
-                  </a>
-                ) : (
-                  "none verified for this platform — use the platform's own reporting flow"
-                )}
-              </div>
-              <div className="mt-1">
-                <span className="font-semibold">Evidence to include: </span>
-                {primary.humanAction.evidenceRequired.join(", ")}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-      <div>
-        <span className="font-semibold">Submission: </span>
-        {data.latestSubmission
-          ? `${new Date(data.latestSubmission.at).toLocaleString()} — ${data.latestSubmission.source?.detail ?? data.latestSubmission.observation}`
-          : "not submitted yet"}
-      </div>
-      <div>
-        <span className="font-semibold">Platform response: </span>
-        {data.latestResponse?.providerResponse
-          ? `${data.latestResponse.providerResponse.decision} (${new Date(data.latestResponse.at).toLocaleString()}) — "${data.latestResponse.providerResponse.verbatim}"`
-          : "none recorded"}
-      </div>
-      <div>
-        <span className="font-semibold">Recheck: </span>
-        {data.latestRecheck
-          ? `${new Date(data.latestRecheck.at).toLocaleString()} — ${data.latestRecheck.reviewVisible === true ? "review still published" : data.latestRecheck.reviewVisible === false ? "review not found" : "could not observe"} (${data.latestRecheck.source?.type ?? "unknown source"})`
-          : "no recheck yet"}
-      </div>
-      <div>
-        <span className="font-semibold">Package integrity: </span>
-        {data.integrity === "intact"
-          ? `Intact — hash re-checked (${data.packageSha256?.slice(0, 12)}…)`
-          : data.integrity === "mismatch"
-            ? "MISMATCH — the stored package no longer matches its sealed hash"
-            : "Not sealed — this case predates the evidence package"}
-      </div>
-      <div>
-        <span className="font-semibold">Platform decision: </span>
-        {data.providerDecision === "none" ? "none recorded" : data.providerDecision}
-      </div>
-      <div>
-        <span className="font-semibold">Outcome: </span>
-        {outcomeLabels[data.outcome] ?? data.outcome} — {data.outcomeBasis}
-      </div>
-      {data.nextRecheckDue && (
-        <div>
-          <span className="font-semibold">Next recheck due: </span>
-          {new Date(data.nextRecheckDue).toLocaleString()}
-        </div>
-      )}
-      {data.routes.length > 0 && (
-        <div>
-          <span className="font-semibold">Routes:</span>
-          <ul className="mt-1 list-disc pl-5">
-            {data.routes.map((r) => (
-              <li key={r.route}>
-                {routeLabels[r.route] ?? r.route} — {r.actionState.toLowerCase().replace(/_/g, " ")}
-                {r.blockedBy ? ` (${r.blockedBy})` : ""}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div>
-        <span className="font-semibold">Ledger:</span>
-        <ul className="mt-1 space-y-1">
-          {data.ledger.map((entry, index) => (
-            <li key={`${entry.at}-${index}`}>
-              <span className="font-semibold">{entry.phase}</span> · {new Date(entry.at).toLocaleString()} · {entry.source?.type ?? "unknown source"} — {entry.observation}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The actions for one case. Each case owns its mutations, so a pending action
- * disables only its own buttons. Every action writes a ledger entry through the
- * verification loop; none of them can mark a review removed on its own — only
- * a recheck can, and a recheck a member records is labelled user-reported.
- */
-function CaseActions({ c, onChanged }: { c: CaseRow; onChanged: () => void }) {
-  const qc = useQueryClient();
-  const update = useServerFn(updateRemovalCase);
-  const submit = useServerFn(recordSubmission);
-  const respond = useServerFn(recordProviderResponse);
-  const recheckAuto = useServerFn(autoRecheckRemovalCase);
-  const recheckManual = useServerFn(recordRecheckResult);
-
-  const [mode, setMode] = useState<null | "submit" | "decision" | "recheck">(null);
-  const [showEvidence, setShowEvidence] = useState(false);
-  const detected = (c.routes ?? []).map((r) => r.route);
-  const defaultRoute = c.status === "rejected" && detected.includes("platform_appeal") ? "platform_appeal" : (c.route ?? detected[0] ?? "platform_policy_report");
-  const [route, setRoute] = useState(defaultRoute);
-  const [reference, setReference] = useState("");
-  const [decision, setDecision] = useState<"accepted" | "rejected" | "no_response">("accepted");
-  const [verbatim, setVerbatim] = useState("");
-  const [manualReason, setManualReason] = useState<string | null>(null);
-  const [method, setMethod] = useState("");
-  const [humanApproved, setHumanApproved] = useState(false);
-  const platform = c.reviews?.platform ?? "the platform";
-  const legalRoute = legalRoutes.includes(route);
-
-  const done = (message: string) => {
-    setMode(null);
-    setReference("");
-    setHumanApproved(false);
-    setVerbatim("");
-    setMethod("");
-    setManualReason(null);
-    onChanged();
-    void qc.invalidateQueries({ queryKey: ["removal_case_detail", c.id] });
-    toast.success(message);
-  };
-  const fail = (error: unknown) => toast.error(error instanceof Error ? error.message : "Could not update the case.");
-
-  const dismiss = useMutation({
-    mutationFn: async () => update({ data: { id: c.id, status: "dismissed" } }),
-    onSuccess: () => done("Case dismissed"),
-    onError: fail,
-  });
-
-  const recordSubmit = useMutation({
-    mutationFn: async () =>
-      submit({
-        data: {
-          caseId: c.id,
-          route,
-          channel: "manual_provider_interface",
-          observation: `A workspace member filed this case with ${platform} through the ${routeLabels[route] ?? route} route.`,
-          ...(reference.trim() ? { reference: reference.trim() } : {}),
-          ...(legalRoute ? { humanApproved } : {}),
-        },
-      }),
-    onSuccess: (result: { duplicate?: boolean }) => done(result.duplicate ? "Already recorded — no duplicate added" : "Submission recorded"),
-    onError: fail,
-  });
-
-  const recordDecision = useMutation({
-    mutationFn: async () => {
-      await respond({
-        data: {
-          caseId: c.id,
-          channel: "provider_interface",
-          verbatim: verbatim.trim(),
-          decision,
-          ...(reference.trim() ? { reference: reference.trim() } : {}),
-        },
-      });
-      // The status follows the platform's decision; a "no response" leaves it open.
-      if (decision !== "no_response") {
-        await update({ data: { id: c.id, status: decision === "accepted" ? "approved" : "rejected" } });
-      }
-    },
-    onSuccess: () => done("Platform decision recorded — recheck the review to verify the outcome"),
-    onError: fail,
-  });
-
-  const autoRecheck = useMutation({
-    mutationFn: async () => recheckAuto({ data: { caseId: c.id } }),
-    onSuccess: (result: { performed: boolean; reason?: string; reviewVisible?: boolean }) => {
-      if (result.performed) {
-        done(result.reviewVisible ? `Recheck via ${platform} API: the review is still published` : `Recheck via ${platform} API: the review is no longer returned`);
-      } else {
-        setManualReason(result.reason ?? "No automatic recheck is available for this review.");
-        setMode("recheck");
-      }
-    },
-    onError: fail,
-  });
-
-  const manualRecheck = useMutation({
-    mutationFn: async (reviewVisible: boolean) =>
-      recheckManual({
-        data: {
-          caseId: c.id,
-          reviewVisible,
-          method: method.trim(),
-          observation: `A workspace member reported the review as ${reviewVisible ? "still visible" : "no longer visible"} on ${platform}.`,
-          closeCase: true,
-        },
-      }),
-    onSuccess: () => done("User-reported recheck recorded"),
-    onError: fail,
-  });
-
-  const busy = dismiss.isPending || recordSubmit.isPending || recordDecision.isPending || autoRecheck.isPending || manualRecheck.isPending;
-
-  return (
-    <>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {c.appeal_text && (
-          <Button size="sm" variant="outline" onClick={() => void copyText(c.appeal_text ?? "", "Appeal text copied")}>
-            Copy appeal
-          </Button>
-        )}
-        {(c.status === "flagged" || c.status === "rejected") && (
-          <Button size="sm" onClick={() => setMode(mode === "submit" ? null : "submit")} disabled={busy}>
-            <Send /> {c.status === "rejected" ? "Submit again / appeal" : "Mark submitted"}
-          </Button>
-        )}
-        {c.status === "submitted" && (
-          <>
-            <Button size="sm" onClick={() => { setDecision("accepted"); setMode("decision"); }} disabled={busy}>
-              <CheckCircle2 /> Platform accepted
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => { setDecision("rejected"); setMode("decision"); }} disabled={busy}>
-              <XCircle /> Platform rejected
-            </Button>
-          </>
-        )}
-        {["submitted", "approved", "rejected"].includes(c.status) && (
-          <Button size="sm" variant="outline" onClick={() => autoRecheck.mutate()} disabled={busy}>
-            {autoRecheck.isPending ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
-            {autoRecheck.isPending ? "Rechecking…" : "Recheck review"}
-          </Button>
-        )}
-        {c.status !== "dismissed" && !["approved", "rejected"].includes(c.status) && (
-          <Button size="sm" variant="ghost" onClick={() => dismiss.mutate()} disabled={busy}>
-            <Ban /> Dismiss
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => setShowEvidence(!showEvidence)}>
-          <FileSearch /> {showEvidence ? "Hide evidence" : "Evidence"}
-        </Button>
-      </div>
-
-      {mode === "submit" && (
-        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border bg-muted/30 p-3">
-          <div className="min-w-56">
-            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Route used</span>
-            <Select value={route} onValueChange={setRoute}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(detected.length > 0 ? detected : [defaultRoute]).map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {routeLabels[r] ?? r}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-56 flex-1">
-            <span className="mb-1 block text-xs font-semibold text-muted-foreground">Platform reference (optional)</span>
-            <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Case or ticket number the platform gave you" />
-          </div>
-          {legalRoute && (
-            <label className="flex basis-full items-center gap-2 text-xs">
-              <Checkbox checked={humanApproved} onCheckedChange={(v) => setHumanApproved(v === true)} />
-              A person (and a lawyer where required) approved this legal submission before it was sent. Owner or admin only.
-            </label>
-          )}
-          <Button size="sm" onClick={() => recordSubmit.mutate()} disabled={busy || (legalRoute && !humanApproved)}>
-            {recordSubmit.isPending ? "Saving…" : "Record submission"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
-            Cancel
-          </Button>
-        </div>
-      )}
-
-      {mode === "decision" && (
-        <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3">
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-44">
-              <span className="mb-1 block text-xs font-semibold text-muted-foreground">Platform decision</span>
-              <Select value={decision} onValueChange={(v) => setDecision(v as typeof decision)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="accepted">Accepted</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                  <SelectItem value="no_response">No response</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-56 flex-1">
-              <span className="mb-1 block text-xs font-semibold text-muted-foreground">Platform reference (optional)</span>
-              <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Only a reference the platform issued" />
-            </div>
-          </div>
-          <Textarea
-            className="min-h-20 text-sm"
-            value={verbatim}
-            onChange={(e) => setVerbatim(e.target.value)}
-            placeholder="Paste the platform's answer exactly as you received it"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            A platform accepting the report does not mark the review removed. Recheck the review afterwards to verify it.
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => recordDecision.mutate()} disabled={busy || verbatim.trim().length === 0}>
-              {recordDecision.isPending ? "Saving…" : "Record decision"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {mode === "recheck" && (
-        <div className="mt-3 space-y-2 rounded-lg border bg-muted/30 p-3">
-          <p className="text-xs text-muted-foreground">{manualReason}</p>
-          <Input value={method} onChange={(e) => setMethod(e.target.value)} placeholder={`How you checked, e.g. "opened the ${platform} listing and searched for the reviewer"`} />
-          <p className="text-[11px] text-muted-foreground">
-            Recorded as a user-reported observation — not verified through the platform API.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => manualRecheck.mutate(true)} disabled={busy || method.trim().length < 3}>
-              Still visible
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => manualRecheck.mutate(false)} disabled={busy || method.trim().length < 3}>
-              No longer visible
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {showEvidence && <CaseEvidence caseId={c.id} />}
-    </>
-  );
-}
-
 const tabs = ["Flagged", "Submitted", "Resolved", "All"] as const;
 
 function useRemovalCases() {
@@ -666,7 +198,7 @@ function useRemovalCases() {
       const { data, error } = await supabase
         .from("removal_cases")
         .select(
-          "id, review_id, violation_type, confidence, rationale, appeal_text, status, outcome, outcome_basis:evidence->verification->>outcomeBasis, route, routes:evidence->routes, model, created_at, reviews(author, rating, body, platform, location_name)",
+          "id, review_id, violation_type, confidence, rationale, appeal_text, status, outcome, model, created_at, reviews(author, rating, body, platform, location_name)",
         )
         .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false });
@@ -825,14 +357,10 @@ function RemovalsPage() {
 
   const [tab, setTab] = useState<(typeof tabs)[number]>("Flagged");
   const { data: cases = [], isLoading } = useRemovalCases();
-  const { data: lastScan, isFetched: lastScanFetched } = useLastScan();
+  const { data: lastScan } = useLastScan();
   const qc = useQueryClient();
   const scan = useServerFn(scanReviewsForRemoval);
-  const readSchedule = useServerFn(getScanSchedule);
-  const { data: schedule } = useQuery({
-    queryKey: ["removal_scan_schedule"],
-    queryFn: async () => (await readSchedule()) as Schedule,
-  });
+  const update = useServerFn(updateRemovalCase);
   const autoScanned = useRef(false);
 
   const runScan = useMutation({
@@ -840,7 +368,6 @@ function RemovalsPage() {
     onSuccess: (result: { checked: number; flagged: number }) => {
       void qc.invalidateQueries({ queryKey: ["removal_cases"] });
       void qc.invalidateQueries({ queryKey: ["removal_scans", "latest"] });
-      void qc.invalidateQueries({ queryKey: ["removal_scan_schedule"] });
       if (result.checked === 0) toast.success("Every review has already been scanned.");
       else
         toast.success(
@@ -851,20 +378,24 @@ function RemovalsPage() {
       toast.error(error instanceof Error ? error.message : "Scan could not finish."),
   });
 
-  // Scan automatically when the page opens, but only once the last scan is older
-  // than the configured interval — not on every visit, since each scan is a paid
-  // AI call. Turning automatic scanning off also stops this page-open scan.
+  const setStatus = useMutation({
+    mutationFn: async (vars: { id: string; status: string }) =>
+      update({ data: { id: vars.id, status: vars.status as never } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["removal_cases"] });
+      toast.success("Case updated");
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof Error ? error.message : "Could not update the case."),
+  });
+
+  // Scan automatically the first time the page opens so new reviews are always assessed.
   useEffect(() => {
-    if (autoScanned.current || isLoading || !schedule || !lastScanFetched) return;
+    if (autoScanned.current || isLoading) return;
     autoScanned.current = true;
-    if (!schedule.enabled) return;
-    const lastRun = Math.max(
-      schedule.lastRunAt ? Date.parse(schedule.lastRunAt) : 0,
-      lastScan?.created_at ? Date.parse(lastScan.created_at) : 0,
-    );
-    if (Date.now() - lastRun >= schedule.intervalMinutes * 60_000) runScan.mutate();
+    runScan.mutate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoading, schedule, lastScanFetched]);
+  }, [isLoading]);
 
   const visible = cases.filter((c) =>
     tab === "All"
@@ -881,7 +412,6 @@ function RemovalsPage() {
   // Counted from the verified outcome, never from the status: a case a member
   // marked closed is not a review the platform actually took down.
   const removed = cases.filter((c) => c.outcome === "removed").length;
-  const removedUserReported = cases.filter((c) => c.outcome === "removed" && outcomeSource(c) === "user_reported").length;
 
   return (
     <AppShell>
@@ -904,12 +434,7 @@ function RemovalsPage() {
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Flagged" value={String(flagged)} icon={ShieldX} />
         <StatCard label="Submitted" value={String(submitted)} icon={Send} />
-        <StatCard
-          label="Removed"
-          value={String(removed)}
-          icon={CheckCircle2}
-          {...(removedUserReported > 0 ? { sub: `${removedUserReported} user-reported, not API-verified` } : {})}
-        />
+        <StatCard label="Removed" value={String(removed)} icon={CheckCircle2} />
         <StatCard
           label="Last scan"
           value={lastScan ? `${lastScan.reviews_checked} checked` : "—"}
@@ -976,12 +501,6 @@ function RemovalsPage() {
                   <span className="text-[11px] text-muted-foreground">
                     {Math.round(Number(c.confidence) * 100)}% confidence
                   </span>
-                  {c.outcome && c.outcome !== "unverified" && (
-                    <span className="text-[11px] font-semibold text-muted-foreground">
-                      {outcomeLabels[c.outcome] ?? c.outcome}
-                      {outcomeSource(c) === "provider_api" ? " · verified via platform API" : outcomeSource(c) === "user_reported" ? " · user-reported, not verified" : ""}
-                    </span>
-                  )}
                   {c.reviews && (
                     <span className="text-[11px] text-muted-foreground">
                       {c.reviews.platform} · {c.reviews.location_name}
@@ -1000,7 +519,7 @@ function RemovalsPage() {
                 )}
 
                 <p className="mt-3 text-sm">
-                  <span className="font-semibold">Why it may break policy (AI candidate, not confirmed): </span>
+                  <span className="font-semibold">Why it breaks policy: </span>
                   {c.rationale}
                 </p>
                 {c.appeal_text && (
@@ -1009,7 +528,58 @@ function RemovalsPage() {
                   </p>
                 )}
 
-                <CaseActions c={c} onChanged={() => void qc.invalidateQueries({ queryKey: ["removal_cases"] })} />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {c.appeal_text && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(c.appeal_text ?? "");
+                        toast.success("Appeal text copied");
+                      }}
+                    >
+                      Copy appeal
+                    </Button>
+                  )}
+                  {c.status === "flagged" && (
+                    <Button
+                      size="sm"
+                      onClick={() => setStatus.mutate({ id: c.id, status: "submitted" })}
+                      disabled={setStatus.isPending}
+                    >
+                      <Send /> Mark submitted
+                    </Button>
+                  )}
+                  {c.status === "submitted" && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => setStatus.mutate({ id: c.id, status: "approved" })}
+                        disabled={setStatus.isPending}
+                      >
+                        <CheckCircle2 /> Removed
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setStatus.mutate({ id: c.id, status: "rejected" })}
+                        disabled={setStatus.isPending}
+                      >
+                        <XCircle /> Rejected
+                      </Button>
+                    </>
+                  )}
+                  {c.status !== "dismissed" && !["approved", "rejected"].includes(c.status) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setStatus.mutate({ id: c.id, status: "dismissed" })}
+                      disabled={setStatus.isPending}
+                    >
+                      <Ban /> Dismiss
+                    </Button>
+                  )}
+                </div>
 
                 {["flagged", "submitted"].includes(c.status) && (
                   <AppealReply

@@ -38,46 +38,22 @@ const TRUSTED_HOSTS = new Set([
 ]);
 
 /** True for loopback, link-local, private and carrier-grade NAT address space. */
-export function isPrivateAddress(address: string): boolean {
+function isPrivateAddress(address: string) {
   const ipv4 = address.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4) {
-    const [a, b, c] = [Number(ipv4[1]), Number(ipv4[2]), Number(ipv4[3])];
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
     if (a === 0 || a === 10 || a === 127) return true;
     if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 100 && b >= 64 && b <= 127) return true;
-    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true; // IETF protocol assignments, TEST-NET-1
-    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking
-    if ((a === 198 && b === 51 && c === 100) || (a === 203 && b === 0 && c === 113)) return true; // TEST-NET-2/3
     if (a >= 224) return true; // multicast / reserved
     return false;
   }
   const v6 = address.toLowerCase();
-  // Hostnames reach this check too; only IPv6 literals contain ":". Without this,
-  // a domain such as fdic.gov or ffxiv.com matched the fd/ff prefixes below.
-  if (!v6.includes(":")) return false;
   if (v6 === "::1" || v6 === "::") return true;
-  if (v6.startsWith("fe8") || v6.startsWith("fe9") || v6.startsWith("fea") || v6.startsWith("feb")) return true; // link-local fe80::/10
-  if (v6.startsWith("fec") || v6.startsWith("fed") || v6.startsWith("fee") || v6.startsWith("fef")) return true; // site-local fec0::/10
-  if (v6.startsWith("fc") || v6.startsWith("fd") || v6.startsWith("ff")) return true; // unique-local, multicast
-  // IPv4 embedded in IPv6: mapped (::ffff:), compatible (::), NAT64 (64:ff9b::).
-  // The URL parser rewrites [::ffff:169.254.169.254] as [::ffff:a9fe:a9fe], so the
-  // hexadecimal form is decoded back to dotted IPv4 before it is checked.
-  const embedded = v6.match(/^(?:::ffff:|::|64:ff9b::)(?:(\d{1,3}(?:\.\d{1,3}){3})|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/);
-  if (embedded) {
-    if (embedded[1]) return isPrivateAddress(embedded[1]);
-    const high = parseInt(embedded[2]!, 16);
-    const low = parseInt(embedded[3]!, 16);
-    return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
-  }
-  // 6to4 (2002::/16) carries an IPv4 address in its next 32 bits.
-  const sixToFour = v6.match(/^2002:([0-9a-f]{1,4}):([0-9a-f]{1,4})(?::|$)/);
-  if (sixToFour) {
-    const high = parseInt(sixToFour[1]!, 16);
-    const low = parseInt(sixToFour[2]!, 16);
-    return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
-  }
+  if (v6.startsWith("fe80") || v6.startsWith("fc") || v6.startsWith("fd")) return true;
+  if (v6.startsWith("::ffff:")) return isPrivateAddress(v6.slice(7));
   return false;
 }
 
@@ -418,11 +394,7 @@ export async function collectCrawl(
       for (const item of results) {
         if (!item) continue;
         const { pageUrl, response, html, durationMs } = item;
-        // Only real anchors in the markup count as links. Scanning the raw HTML also matched
-        // strings inside inline scripts (e.g. template literals in hydration code) and
-        // reported them as broken pages.
-        const markup = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
-        const links = Array.from(markup.matchAll(/<a\b[^>]*?\shref=["']([^"'#]+)["']/gi)).map((m) => m[1] as string);
+        const links = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map((m) => m[1] as string);
         let internal = 0;
         let external = 0;
         for (const href of links) {

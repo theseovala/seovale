@@ -2,12 +2,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Star, TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND, platforms, type PlatformId, type Sentiment, type ReviewStatus } from "@/lib/domain";
-// The artwork is imported as a real file so the bundler hashes it and serves it
-// from this deployment. The matching `.asset.json` pointers describe the same
-// images on Lovable's asset host, which only resolves behind the Lovable dev
-// proxy — in production those URLs 404, which left the coin blank.
-import darkCoinUrl from "@/assets/seovale-coin-dark.jpg";
-import lightCoinUrl from "@/assets/seovale-coin-light.jpg";
+import darkCoinAsset from "@/assets/seovale-coin-dark.jpg.asset.json";
+import lightCoinAsset from "@/assets/seovale-coin-light.jpg.asset.json";
 import { Button } from "@/components/ui/button";
 
 /* ---------- Page header ---------- */
@@ -276,6 +272,8 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
   }, []);
 
   function spin(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     const button = event.currentTarget;
     const coin = button.querySelector<HTMLElement>(".brand-coin");
     // Re-entry is guarded with a ref rather than the disabled attribute.
@@ -309,7 +307,7 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
         <span className="brand-coin-edge" />
         <img
           className="brand-coin-face brand-coin-front"
-          src={darkCoinUrl}
+          src={darkCoinAsset.url}
           alt=""
           width={700}
           height={700}
@@ -317,7 +315,7 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
         />
         <img
           className="brand-coin-face brand-coin-back"
-          src={lightCoinUrl}
+          src={lightCoinAsset.url}
           alt=""
           width={700}
           height={700}

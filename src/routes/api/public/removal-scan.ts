@@ -14,18 +14,12 @@ export const Route = createFileRoute("/api/public/removal-scan")({
         // The scheduler authenticates with a private token stored in the
         // database; the platform cron secret is also accepted.
         const bearer = /^Bearer ([^\s,]+)$/.exec(request.headers.get("authorization") ?? "")?.[1];
-        // A failed lookup is retried once and then reported as 503, never as
-        // 401: a transient database error must not look like a wrong token.
-        const lookupToken = () => supabaseAdmin.from("scheduler_tokens").select("token").eq("name", "removal-scan").maybeSingle();
-        let lookup = await lookupToken();
-        if (lookup.error) lookup = await lookupToken();
-        if (lookup.error && !process.env["LOVABLE_CRON_SECRET"]) return new Response("Scheduler token lookup failed; retry later.", { status: 503 });
-        const tokenRow = lookup.data;
-        const { timingSafeEqual } = await import("node:crypto");
-        const bearerBuf = Buffer.from(bearer ?? "");
-        const tokenBuf = Buffer.from(typeof tokenRow?.token === "string" ? tokenRow.token : "");
-        const tokenMatches = !!bearer && tokenBuf.length > 0 && bearerBuf.length === tokenBuf.length && timingSafeEqual(bearerBuf, tokenBuf);
-        if (!tokenMatches) {
+        const { data: tokenRow } = await supabaseAdmin
+          .from("scheduler_tokens")
+          .select("token")
+          .eq("name", "removal-scan")
+          .maybeSingle();
+        if (!bearer || bearer !== tokenRow?.token) {
           const { authenticateCronRequest } = await import("@/integrations/supabase/cron-auth");
           const denied = await authenticateCronRequest(request);
           if (denied) return denied;
@@ -95,19 +89,7 @@ export const Route = createFileRoute("/api/public/removal-scan")({
           }
         }
 
-        // Due rechecks run after the scan, isolated so a failure here never
-        // undoes or hides the scan results. Only real provider observations
-        // are written; cases with no working connection are skipped.
-        let rechecks: { examined: number; due: number; performed: number; skipped: number; failed: number } | { error: string };
-        try {
-          const { runDueRechecks } = await import("@/lib/removal/scheduled.server");
-          const summary = await runDueRechecks(supabaseAdmin, 20);
-          rechecks = { examined: summary.examined, due: summary.due, performed: summary.performed, skipped: summary.skipped, failed: summary.failed };
-        } catch (recheckError) {
-          rechecks = { error: recheckError instanceof Error ? recheckError.message : "Scheduled recheck failed" };
-        }
-
-        return Response.json({ ran: results.length, results, rechecks });
+        return Response.json({ ran: results.length, results });
       },
     },
   },

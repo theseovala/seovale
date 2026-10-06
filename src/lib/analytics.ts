@@ -153,10 +153,6 @@ export interface Theme {
   theme: string;
   mentions: number;
   sentiment: number;
-  /** Share (%) of the theme's mentions whose stored sentiment is neutral. */
-  neutral: number;
-  /** Share (%) of the theme's mentions whose stored sentiment is negative. */
-  negative: number;
   change: number | null;
   kind: Sentiment;
 }
@@ -187,14 +183,10 @@ export function feedbackThemes(reviews: LiveReview[], limit = 10): Theme[] {
         e.recent.length >= 3 && e.prior.length >= 3
           ? Math.round(posPct(e.recent) - posPct(e.prior))
           : null;
-      const share = (s: Sentiment) =>
-        Math.round((e.all.filter((r) => r.sentiment === s).length / e.all.length) * 100);
       return {
         theme,
         mentions: e.all.length,
         sentiment,
-        neutral: share("neutral"),
-        negative: share("negative"),
         change,
         kind: (sentiment >= 65 ? "positive" : sentiment >= 40 ? "neutral" : "negative") as Sentiment,
       };
@@ -208,20 +200,15 @@ export function scoreHistory(reviews: LiveReview[], months = 6) {
   return monthlyTrend(reviews, months).map((m) => ({ month: m.month, you: m.score }));
 }
 
-/** Median hours between a review being posted and it being replied to. */
 export function responseTimeHours(reviews: LiveReview[]): number | null {
   const answered = reviews.filter((r) => r.replied_at);
   if (answered.length === 0) return null;
-  const deltas = answered
-    .map((r) =>
-      Math.max(new Date(r.replied_at!).getTime() - new Date(r.external_created_at).getTime(), 0),
-    )
-    .filter((d) => Number.isFinite(d))
-    .sort((a, b) => a - b);
-  if (deltas.length === 0) return null;
-  const mid = Math.floor(deltas.length / 2);
-  const median = deltas.length % 2 === 1 ? deltas[mid]! : (deltas[mid - 1]! + deltas[mid]!) / 2;
-  return round1(median / 3_600_000);
+  const totals = answered.reduce((sum, r) => {
+    const delta =
+      new Date(r.replied_at!).getTime() - new Date(r.external_created_at).getTime();
+    return sum + Math.max(delta, 0);
+  }, 0);
+  return round1(totals / answered.length / 3_600_000);
 }
 
 export function monthlyResponseTime(reviews: LiveReview[], months = 6) {

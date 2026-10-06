@@ -3,12 +3,6 @@
 // simulated responses and no success status without a real HTTP 2xx.
 import { integrationById, type TestOutcomeCode } from "./registry";
 
-// Every provider call in this module gets a 20 s ceiling unless it sets its own
-// signal, so one unresponsive provider cannot hang a connection test or a scan.
-const PROVIDER_TIMEOUT_MS = 20_000;
-const fetch: typeof globalThis.fetch = (input, init) =>
-  globalThis.fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
-
 export interface TestResult {
   ok: boolean;
   status: number;
@@ -26,11 +20,9 @@ export interface OAuthProviderConfig {
   clientSecretEnv: string[];
   usePkce: boolean;
   tokenAuth: "basic" | "body";
-  scopeSeparator?: "," | " ";
   extraAuthParams?: Record<string, string>;
   headers?: Record<string, string>;
-  /** `creds` is the workspace's vault bag, for tests that need an extra credential (e.g. a developer token). */
-  test: (accessToken: string, creds?: CredentialBag) => Promise<TestResult>;
+  test: (accessToken: string) => Promise<TestResult>;
 }
 
 const USER_AGENT = "Seovale/1.0 (reputation monitoring)";
@@ -51,7 +43,7 @@ export function outcomeFor(ok: boolean, status: number, message: string): TestOu
   if (ok) return "CONNECTED";
   if (status === 0) {
     const lower = message.toLowerCase();
-    return lower.includes("not configured") || (lower.startsWith("no ") && lower.includes("configured")) || lower.includes("missing") || lower.includes("required") || lower.includes("add your")
+    return lower.includes("not configured") || lower.includes("missing") || lower.includes("required") || lower.includes("add your")
       ? "NOT_CONFIGURED"
       : "PROVIDER_ERROR";
   }
@@ -62,7 +54,7 @@ export function outcomeFor(ok: boolean, status: number, message: string): TestOu
     // that is a provider-side setup state, not a bad credential.
     if (/has not been used in project|is disabled|blocked|not enabled|enable it by visiting|accessNotConfigured/i.test(message))
       return "APPROVAL_REQUIRED";
-    return "AUTHENTICATION_FAILED";
+    return "INVALID_CREDENTIALS";
   }
   if (status === 429) return "RATE_LIMITED";
   return "PROVIDER_ERROR";
@@ -99,31 +91,6 @@ function failure(response: Response, payload: Record<string, any>): TestResult {
     rateLimited: response.status === 429,
     code: outcomeFor(false, response.status, text),
   };
-}
-
-function instagramFailure(
-  status: number,
-  capability: "profile" | "media" | "comments" | "messaging",
-): TestResult {
-  const code: TestOutcomeCode =
-    status === 401
-      ? "AUTHENTICATION_FAILED"
-      : status === 403
-        ? "INSUFFICIENT_SCOPE"
-        : status === 429
-          ? "RATE_LIMITED"
-          : "PROVIDER_ERROR";
-  const message =
-    status === 401
-      ? "Instagram authorization expired or was revoked. Reconnect the account."
-      : status === 403 && capability === "comments"
-        ? "Instagram denied comments access. Check instagram_business_manage_comments and app access."
-        : status === 403 && capability === "messaging"
-          ? "Instagram denied messaging access. Check instagram_business_manage_messages and app access."
-          : status === 403
-            ? "Instagram denied profile/media access. Check instagram_business_basic and app access."
-            : `Instagram ${capability} API request failed (HTTP ${status}).`;
-  return { ok: false, status, message, code };
 }
 
 async function googleTest(url: string, accessToken: string, pick: (p: Record<string, any>) => { label?: string | null; ref?: string | null }) {
@@ -197,80 +164,23 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     },
   },
   instagram: {
-    authUrl: "https://www.instagram.com/oauth/authorize",
-    tokenUrl: "https://api.instagram.com/oauth/access_token",
-    clientIdEnv: ["INSTAGRAM_APP_ID"],
-    clientSecretEnv: ["INSTAGRAM_APP_SECRET"],
+    authUrl: "https://www.facebook.com/v21.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
+    clientIdEnv: ["FACEBOOK_APP_ID"],
+    clientSecretEnv: ["FACEBOOK_APP_SECRET"],
     usePkce: false,
     tokenAuth: "body",
-    scopeSeparator: ",",
     test: async (token) => {
-      try {
-        const request = (url: string) =>
-          fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        const accountResponse = await request(
-          "https://graph.instagram.com/v25.0/me?fields=user_id,username",
-        );
-        const payload = await readJson(accountResponse);
-        if (!accountResponse.ok) {
-          return instagramFailure(accountResponse.status, "profile");
-        }
-        const account = Array.isArray(payload["data"]) ? payload["data"][0] : payload;
-        const userId = account?.["user_id"] ?? account?.["id"];
-        if (typeof userId !== "string" && typeof userId !== "number") {
-          return {
-            ok: false,
-            status: accountResponse.status,
-            message: "Instagram returned no account ID.",
-            code: "PROVIDER_ERROR",
-          };
-        }
-
-        const mediaResponse = await request(
-          `https://graph.instagram.com/v25.0/${encodeURIComponent(String(userId))}/media?fields=id&limit=1`,
-        );
-        if (!mediaResponse.ok) {
-          return instagramFailure(mediaResponse.status, "media");
-        }
-        const mediaPayload = await readJson(mediaResponse);
-        const mediaId = mediaPayload["data"]?.[0]?.["id"];
-        if (typeof mediaId === "string") {
-          const commentsResponse = await request(
-            `https://graph.instagram.com/v25.0/${encodeURIComponent(mediaId)}/comments?fields=id&limit=1`,
-          );
-          if (!commentsResponse.ok) {
-            return instagramFailure(commentsResponse.status, "comments");
-          }
-          await readJson(commentsResponse);
-        }
-
-        const messagesResponse = await request(
-          "https://graph.instagram.com/v25.0/me/conversations?platform=instagram&limit=1",
-        );
-        if (!messagesResponse.ok) {
-          return instagramFailure(messagesResponse.status, "messaging");
-        }
-        await readJson(messagesResponse);
-
-        return {
-          ok: true,
-          status: accountResponse.status,
-          message:
-            typeof mediaId === "string"
-              ? "Instagram account, comments and messaging APIs verified."
-              : "Instagram account and messaging APIs verified. Comment access could not be tested because the account has no media.",
-          label: typeof account?.["username"] === "string" ? account["username"] : null,
-          accountRef: String(userId),
-          code: "CONNECTED",
-        };
-      } catch {
-        return {
-          ok: false,
-          status: 0,
-          message: "Instagram profile verification could not reach Meta.",
-          code: "PROVIDER_ERROR",
-        };
+      const response = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?fields=instagram_business_account{id,username}&access_token=${encodeURIComponent(token)}`,
+      );
+      const payload = await readJson(response);
+      if (!response.ok) return failure(response, payload);
+      const linked = (payload["data"] ?? []).map((row: Record<string, any>) => row["instagram_business_account"]).find(Boolean);
+      if (!linked) {
+        return { ok: false, status: response.status, message: "No Instagram professional account is linked to the authorized Facebook Page." };
       }
+      return { ok: true, status: response.status, message: "Live Graph API call succeeded.", label: linked["username"] ?? null, accountRef: linked["id"] };
     },
   },
   reddit: {
@@ -363,8 +273,8 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     usePkce: true,
     tokenAuth: "body",
     extraAuthParams: { access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true" },
-    test: async (token, creds = {}) => {
-      const devToken = envValue(["GOOGLE_ADS_DEVELOPER_TOKEN"], creds);
+    test: async (token) => {
+      const devToken = envValue(["GOOGLE_ADS_DEVELOPER_TOKEN"]);
       if (!devToken) return notConfigured("A Google Ads developer token is required (Google Ads API access approval).");
       const response = await fetch("https://googleads.googleapis.com/v17/customers:listAccessibleCustomers", {
         headers: { Authorization: `Bearer ${token}`, "developer-token": devToken },
@@ -382,22 +292,7 @@ export function providerConfigured(providerId: string, creds: CredentialBag = {}
   if (oauth) return Boolean(envValue(oauth.clientIdEnv, creds) && envValue(oauth.clientSecretEnv, creds));
   const definition = integrationById(providerId);
   if (!definition || definition.requiredSecrets.length === 0) return false;
-  return missingRequiredSecrets(providerId, creds).length === 0;
-}
-
-/**
- * Required credentials still absent from both the vault bag and the server
- * environment. Empty when the required set, or any complete alternative set
- * (e.g. Twilio API-key auth), is present.
- */
-export function missingRequiredSecrets(providerId: string, creds: CredentialBag = {}) {
-  const definition = integrationById(providerId);
-  if (!definition) return [];
-  const has = (name: string) => Boolean(envValue([name], creds));
-  const missing = definition.requiredSecrets.filter((name) => !has(name));
-  if (missing.length === 0) return [];
-  if ((definition.alternativeSecrets ?? []).some((set) => set.every(has))) return [];
-  return missing;
+  return definition.requiredSecrets.every((name) => Boolean(creds[name] ?? process.env[name]));
 }
 
 export function buildAuthorizationUrl(providerId: string, redirectUri: string, state: string, challenge: string | null, creds: CredentialBag = {}) {
@@ -410,7 +305,7 @@ export function buildAuthorizationUrl(providerId: string, redirectUri: string, s
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", definition.scopes.join(config.scopeSeparator ?? " "));
+  url.searchParams.set("scope", definition.scopes.join(" "));
   url.searchParams.set("state", state);
   for (const [k, v] of Object.entries(config.extraAuthParams ?? {})) url.searchParams.set(k, v);
   if (config.usePkce && challenge) {
@@ -448,126 +343,14 @@ async function tokenRequest(providerId: string, body: URLSearchParams, creds: Cr
   };
 }
 
-export function exchangeCode(
-  providerId: string,
-  code: string,
-  verifier: string | null,
-  redirectUri: string,
-  creds: CredentialBag = {},
-) {
-  if (providerId === "instagram") {
-    return exchangeInstagramCode(code, redirectUri, creds);
-  }
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    code,
-    redirect_uri: redirectUri,
-  });
+export function exchangeCode(providerId: string, code: string, verifier: string | null, redirectUri: string, creds: CredentialBag = {}) {
+  const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
   if (verifier) body.set("code_verifier", verifier);
   return tokenRequest(providerId, body, creds);
 }
 
-async function exchangeInstagramCode(code: string, redirectUri: string, creds: CredentialBag) {
-  const clientId = envValue(["INSTAGRAM_APP_ID"], creds);
-  const clientSecret = envValue(["INSTAGRAM_APP_SECRET"], creds);
-  if (!clientId || !clientSecret)
-    throw new Error("Instagram application credentials are not configured.");
-
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri,
-    code,
-  });
-  const response = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  const payload = await readJson(response);
-  const data = Array.isArray(payload["data"]) ? payload["data"][0] : payload;
-  if (!response.ok || typeof data?.["access_token"] !== "string" || !data["access_token"]) {
-    throw new Error(`Instagram authorization-code exchange failed (HTTP ${response.status}).`);
-  }
-
-  const permissions = data["permissions"];
-  const scopes = Array.isArray(permissions)
-    ? permissions.filter(
-        (permission: unknown): permission is string => typeof permission === "string",
-      )
-    : typeof permissions === "string"
-      ? permissions.split(/[,\s]+/).filter(Boolean)
-      : typeof payload["scope"] === "string"
-        ? payload["scope"].split(/[,\s]+/).filter(Boolean)
-        : [];
-  return {
-    accessToken: data["access_token"] as string,
-    refreshToken: null,
-    expiresIn: typeof data["expires_in"] === "number" ? data["expires_in"] : 3600,
-    scopes,
-    accountId: data["user_id"] == null ? null : String(data["user_id"]),
-  };
-}
-
-export function refreshAccessToken(
-  providerId: string,
-  refreshToken: string,
-  creds: CredentialBag = {},
-) {
-  if (providerId === "instagram") {
-    return refreshInstagramToken(refreshToken);
-  }
-  return tokenRequest(
-    providerId,
-    new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
-    creds,
-  );
-}
-
-async function refreshInstagramToken(accessToken: string) {
-  const url = new URL("https://graph.instagram.com/refresh_access_token");
-  url.searchParams.set("grant_type", "ig_refresh_token");
-  url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url.toString());
-  const payload = await readJson(response);
-  if (!response.ok || typeof payload["access_token"] !== "string") {
-    throw new Error(`Instagram token refresh failed (HTTP ${response.status}).`);
-  }
-  if (typeof payload["expires_in"] !== "number" || payload["expires_in"] <= 0) {
-    throw new Error("Instagram token refresh returned no valid expiration.");
-  }
-  return {
-    accessToken: payload["access_token"] as string,
-    refreshToken: null,
-    expiresIn: payload["expires_in"],
-    scopes: [],
-  };
-}
-
-/** Instagram Login tokens are exchanged separately from Facebook Login tokens. */
-export async function exchangeInstagramLongLivedToken(
-  shortLivedToken: string,
-  creds: CredentialBag = {},
-) {
-  const clientSecret = envValue(["INSTAGRAM_APP_SECRET"], creds);
-  if (!clientSecret) throw new Error("Instagram application credentials are not configured.");
-  const url = new URL("https://graph.instagram.com/access_token");
-  url.searchParams.set("grant_type", "ig_exchange_token");
-  url.searchParams.set("client_secret", clientSecret);
-  url.searchParams.set("access_token", shortLivedToken);
-  const response = await fetch(url.toString());
-  const payload = await readJson(response);
-  if (!response.ok || typeof payload["access_token"] !== "string" || !payload["access_token"]) {
-    throw new Error(`Instagram long-lived token exchange failed (HTTP ${response.status}).`);
-  }
-  if (typeof payload["expires_in"] !== "number" || payload["expires_in"] <= 0) {
-    throw new Error("Instagram long-lived token exchange returned no valid expiration.");
-  }
-  return {
-    accessToken: payload["access_token"] as string,
-    expiresIn: payload["expires_in"],
-  };
+export function refreshAccessToken(providerId: string, refreshToken: string, creds: CredentialBag = {}) {
+  return tokenRequest(providerId, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }), creds);
 }
 
 /** Long-lived Meta user token (60 days) — short-lived tokens expire in ~1 hour. */
@@ -636,52 +419,6 @@ export async function testTripadvisor(query: string | null, creds: CredentialBag
   };
 }
 
-/**
- * X app-only test with the saved bearer token (no user authorization needed).
- * A 402 means the X account has no API credits left — reported as-is, never as connected.
- */
-export async function testTwitterAppOnly(creds: CredentialBag = {}): Promise<TestResult> {
-  const bearer = envValue(["TWITTER_BEARER_TOKEN"], creds);
-  if (!bearer) return notConfigured("No X bearer token is configured.");
-  const response = await fetch("https://api.x.com/2/users/by/username/XDevelopers", { headers: { Authorization: `Bearer ${bearer}` } });
-  const payload = await readJson(response);
-  if (response.status === 402) {
-    const detail = String(payload["detail"] ?? payload["title"] ?? "Payment required.");
-    return { ok: false, status: 402, message: `X API credits depleted (HTTP 402): ${detail}`.slice(0, 300), code: "PROVIDER_ERROR" };
-  }
-  if (!response.ok) return failure(response, payload);
-  const user = payload["data"];
-  if (!user?.["id"]) return { ok: false, status: response.status, message: "X returned no user for the app-only test lookup.", code: "PROVIDER_ERROR" };
-  return { ok: true, status: response.status, message: "Live X API call (app-only bearer token) succeeded.", label: "X app-only access", accountRef: null, code: "CONNECTED" };
-}
-
-/**
- * Verifies a Meta app ID + secret with an app access token. Valid credentials
- * still do not unlock Business Suite data without App Review, so success is
- * reported as APPROVAL_REQUIRED, never CONNECTED.
- */
-export async function testMetaAppCredentials(creds: CredentialBag = {}): Promise<TestResult> {
-  const appId = envValue(["FACEBOOK_APP_ID"], creds);
-  const appSecret = envValue(["FACEBOOK_APP_SECRET"], creds);
-  if (!appId || !appSecret) return notConfigured("Meta app ID and app secret are required.");
-  const response = await fetch(
-    `https://graph.facebook.com/v21.0/${encodeURIComponent(appId)}?fields=id,name&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`,
-  );
-  const payload = await readJson(response);
-  if (!response.ok) {
-    const failed = failure(response, payload);
-    return payload["error"]?.["type"] === "OAuthException" ? { ...failed, code: "AUTHENTICATION_FAILED" } : failed;
-  }
-  return {
-    ok: false,
-    status: response.status,
-    message: `Meta app credentials verified${payload["name"] ? ` (${payload["name"]})` : ""}. business_management still requires Meta App Review approval.`,
-    label: payload["name"] ?? null,
-    accountRef: payload["id"] ?? null,
-    code: "APPROVAL_REQUIRED",
-  };
-}
-
 /* ---------- API-key providers: one live test per provider ---------- */
 
 async function simpleFetchTest(
@@ -730,20 +467,11 @@ export async function testApiKeyProvider(
       const token = envValue(["WHATSAPP_ACCESS_TOKEN"], creds);
       const phoneId = envValue(["WHATSAPP_PHONE_NUMBER_ID"], creds);
       if (!token || !phoneId) return notConfigured("WhatsApp access token and phone number ID are required.");
-      const phone = await simpleFetchTest(
+      return simpleFetchTest(
         `https://graph.facebook.com/v21.0/${encodeURIComponent(phoneId)}?access_token=${encodeURIComponent(token)}`,
         {},
         (p) => ({ ok: Boolean(p["id"]), message: "Phone number not found for this token.", label: p["display_phone_number"] ?? null, ref: p["id"] ?? null }),
       );
-      const wabaId = envValue(["WHATSAPP_BUSINESS_ACCOUNT_ID"], creds);
-      if (!phone.ok || !wabaId) return phone;
-      // The WABA ID is optional; when saved, the same token must be able to read it.
-      const waba = await simpleFetchTest(
-        `https://graph.facebook.com/v21.0/${encodeURIComponent(wabaId)}?fields=id,name&access_token=${encodeURIComponent(token)}`,
-        {},
-        (p) => ({ ok: Boolean(p["id"]), message: "WhatsApp Business Account not found for this token.", label: p["name"] ?? null, ref: p["id"] ?? null }),
-      );
-      return waba.ok ? phone : waba;
     }
     case "yelp": {
       const key = envValue(["YELP_FUSION_API_KEY"], creds);
@@ -851,63 +579,24 @@ export async function testApiKeyProvider(
     case "resend_email": {
       const key = envValue(["RESEND_API_KEY"], creds);
       if (!key) return notConfigured("No Resend API key is configured.");
-      const response = await fetch("https://api.resend.com/domains", { headers: { accept: "application/json", Authorization: `Bearer ${key}` } });
-      const payload = await readJson(response);
-      if (!response.ok) {
-        const failed = failure(response, payload);
-        // A sending-only key is valid but cannot list domains — a scope limit, not a bad key.
-        return /restricted to only send/i.test(failed.message) ? { ...failed, code: "INSUFFICIENT_SCOPE" } : failed;
-      }
-      if (!(payload["object"] === "list" || Array.isArray(payload["data"]))) {
-        return { ok: false, status: response.status, message: "Resend returned no domain list.", code: "PROVIDER_ERROR" };
-      }
-      const domain = envValue(["RESEND_FROM_DOMAIN"], creds)?.trim().toLowerCase();
-      if (domain) {
-        const match = (payload["data"] ?? []).find((d: Record<string, any>) => String(d["name"] ?? "").toLowerCase() === domain);
-        if (!match) {
-          return { ok: false, status: response.status, message: `The sending domain ${domain} is not added to this Resend account.`, code: "NOT_CONFIGURED" };
-        }
-        if (match["status"] !== "verified") {
-          return {
-            ok: false,
-            status: response.status,
-            message: `The sending domain ${domain} is not verified in Resend yet (status: ${String(match["status"] ?? "unknown")}).`,
-            code: "APPROVAL_REQUIRED",
-          };
-        }
-        return { ok: true, status: response.status, message: `Live API call succeeded; ${domain} is verified.`, label: domain, accountRef: String(match["id"] ?? domain), code: "CONNECTED" };
-      }
-      return { ok: true, status: response.status, message: "Live API call succeeded.", label: "Resend email API", accountRef: null, code: "CONNECTED" };
+      return simpleFetchTest("https://api.resend.com/domains", { Authorization: `Bearer ${key}` }, (p) => ({
+        ok: p["object"] === "list" || Array.isArray(p["data"]),
+        message: "Resend rejected the API key.",
+        label: "Resend email API",
+        ref: null,
+      }));
     }
     case "twilio_sms": {
       const sid = envValue(["TWILIO_ACCOUNT_SID"], creds);
       const token = envValue(["TWILIO_AUTH_TOKEN"], creds);
-      const apiKeySid = envValue(["TWILIO_API_KEY_SID"], creds);
-      const apiKeySecret = envValue(["TWILIO_API_KEY_SECRET"], creds);
-      // Twilio accepts either the account auth token or an API key SID + secret.
-      const user = apiKeySid && apiKeySecret ? apiKeySid : sid;
-      const password = apiKeySid && apiKeySecret ? apiKeySecret : token;
-      if (!sid || !user || !password) return notConfigured("Twilio account SID plus an auth token (or API key SID + secret) are required.");
-      const basic = Buffer.from(`${user}:${password}`).toString("base64");
-      const account = await simpleFetchTest(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}.json`, { Authorization: `Basic ${basic}` }, (p) => ({
+      if (!sid || !token) return notConfigured("Twilio account SID and auth token are required.");
+      const basic = Buffer.from(`${sid}:${token}`).toString("base64");
+      return simpleFetchTest(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}.json`, { Authorization: `Basic ${basic}` }, (p) => ({
         ok: p["sid"] === sid,
         message: "Twilio rejected the credentials.",
         label: p["friendly_name"] ?? null,
         ref: p["sid"] ?? null,
       }));
-      const number = envValue(["TWILIO_PHONE_NUMBER"], creds)?.trim();
-      if (!account.ok || !number) return account;
-      const numbers = await simpleFetchTest(
-        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(number)}`,
-        { Authorization: `Basic ${basic}` },
-        (p) => ({
-          ok: Array.isArray(p["incoming_phone_numbers"]) && p["incoming_phone_numbers"].length > 0,
-          message: `The sender number ${number} is not an incoming number on this Twilio account.`,
-          label: account.label ?? null,
-          ref: account.accountRef ?? null,
-        }),
-      );
-      return numbers.ok ? account : { ...numbers, code: numbers.status === 200 ? "NOT_CONFIGURED" : (numbers.code ?? "PROVIDER_ERROR") };
     }
     case "stripe": {
       const key = envValue(["STRIPE_SECRET_KEY"], creds);
@@ -1000,7 +689,7 @@ export async function testApiKeyProvider(
           ok: false,
           status: response.status,
           message: String(payload["error"]?.["message"] ?? "UptimeRobot rejected the key."),
-          code: "AUTHENTICATION_FAILED",
+          code: "INVALID_CREDENTIALS",
         };
       }
       return {
@@ -1068,14 +757,6 @@ export async function revokeOAuthToken(
       };
     }
     if (provider === "facebook" || provider === "instagram" || provider === "whatsapp") {
-      if (provider === "instagram") {
-        return {
-          revoked: false,
-          supported: false,
-          message:
-            "Instagram Login has no supported revoke endpoint here; stored access was deleted. Remove SEO Vale in Instagram's authorized apps to revoke provider access.",
-        };
-      }
       const response = await fetch(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(accessToken)}`, {
         method: "DELETE",
       });

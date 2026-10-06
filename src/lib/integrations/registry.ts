@@ -29,18 +29,13 @@ export interface IntegrationDefinition {
   manualReason?: string;
   /**
    * Vault bucket the credentials are stored under. Providers that share one
-   * developer application (Gmail + YouTube, Facebook Page + Meta Business) share a group.
+   * developer application (Gmail + YouTube, Facebook + Instagram) share a group.
    */
   credentialGroup?: string;
   /** Provider-specific credential schema shown in the configuration panel. */
   credentialFields?: CredentialField[];
   /** Provider requires a separate approval beyond an API key (honest status). */
   approvalRequired?: string;
-  /**
-   * Other complete credential sets that also make the provider usable, e.g.
-   * Twilio API-key auth instead of the account auth token.
-   */
-  alternativeSecrets?: string[][];
 }
 
 const GOOGLE_OAUTH_FIELDS: CredentialField[] = [
@@ -52,17 +47,6 @@ const GOOGLE_OAUTH_FIELDS: CredentialField[] = [
 const META_FIELDS: CredentialField[] = [
   { key: "FACEBOOK_APP_ID", label: "App ID", secret: false },
   { key: "FACEBOOK_APP_SECRET", label: "App secret", secret: true },
-  {
-    key: "META_WEBHOOK_VERIFY_TOKEN",
-    label: "Webhook verify token (optional)",
-    secret: true,
-    hint: "Any string you choose; enter the same value as the Verify Token in the Meta app's Webhooks settings.",
-  },
-];
-
-const INSTAGRAM_FIELDS: CredentialField[] = [
-  { key: "INSTAGRAM_APP_ID", label: "Instagram App ID", secret: false },
-  { key: "INSTAGRAM_APP_SECRET", label: "Instagram App secret", secret: true },
 ];
 
 export const INTEGRATIONS: IntegrationDefinition[] = [
@@ -187,18 +171,13 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: "instagram",
     group: "Meta",
     label: "Instagram professional account",
-    description: "Instagram professional account, comments and messaging.",
+    description: "Comments and mentions on the linked business account.",
     kind: "oauth2",
-    requiredSecrets: ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
-    scopes: [
-      "instagram_business_basic",
-      "instagram_business_manage_comments",
-      "instagram_business_manage_messages",
-    ],
-    docsUrl:
-      "https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login/",
-    credentialGroup: "instagram",
-    credentialFields: INSTAGRAM_FIELDS,
+    requiredSecrets: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
+    scopes: ["instagram_basic", "instagram_manage_comments", "pages_show_list", "business_management"],
+    docsUrl: "https://developers.facebook.com/docs/instagram-api/",
+    credentialGroup: "meta",
+    credentialFields: META_FIELDS,
   },
   {
     id: "whatsapp",
@@ -213,8 +192,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     credentialFields: [
       { key: "WHATSAPP_ACCESS_TOKEN", label: "Access token", secret: true, hint: "System-user token with whatsapp_business_messaging." },
       { key: "WHATSAPP_PHONE_NUMBER_ID", label: "Phone number ID", secret: false, hint: "From the WhatsApp Business account in Meta Business." },
-      { key: "WHATSAPP_BUSINESS_ACCOUNT_ID", label: "WhatsApp Business Account ID (WABA ID)", secret: false, hint: "Optional. When set, the live test also confirms the token can read this account." },
-      { key: "WHATSAPP_WEBHOOK_VERIFY_TOKEN", label: "Webhook verify token (optional)", secret: true, hint: "Same value as the Verify Token in the WhatsApp webhook configuration." },
     ],
   },
   {
@@ -228,11 +205,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://documentation-apidocumentation.trustpilot.com/",
     accountField: { label: "Business domain", hint: "e.g. seovale.com — used to resolve your Trustpilot business unit." },
     credentialGroup: "trustpilot",
-    credentialFields: [
-      { key: "TRUSTPILOT_API_KEY", label: "API key (Client ID)", secret: true },
-      { key: "TRUSTPILOT_API_SECRET", label: "API secret (Client secret)", secret: true, hint: "Optional. Needed only for Trustpilot business-user (OAuth) endpoints." },
-      { key: "TRUSTPILOT_WEBHOOK_SECRET", label: "Webhook signing secret (optional)", secret: true, hint: "Used to verify tp-signature on Trustpilot webhook deliveries." },
-    ],
+    credentialFields: [{ key: "TRUSTPILOT_API_KEY", label: "API key", secret: true }],
   },
   {
     id: "tripadvisor",
@@ -288,9 +261,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     credentialFields: [
       { key: "TWITTER_CLIENT_ID", label: "OAuth 2.0 Client ID", secret: false },
       { key: "TWITTER_CLIENT_SECRET", label: "OAuth 2.0 Client secret", secret: true },
-      { key: "TWITTER_BEARER_TOKEN", label: "Bearer token (app-only)", secret: true, hint: "Lets the live test run with app-only access before any account is authorized." },
-      { key: "TWITTER_CONSUMER_KEY", label: "API key (consumer key)", secret: false, hint: "Optional. OAuth 1.0a consumer key from the X developer portal." },
-      { key: "TWITTER_CONSUMER_SECRET", label: "API key secret (consumer secret)", secret: true, hint: "Optional. Used to verify X webhook signatures." },
     ],
   },
   {
@@ -397,10 +367,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://resend.com/docs/api-reference",
     credentialGroup: "resend_email",
-    credentialFields: [
-      { key: "RESEND_API_KEY", label: "API key", secret: true, placeholder: "re_..." },
-      { key: "RESEND_FROM_DOMAIN", label: "Sending domain", secret: false, placeholder: "mail.example.com", hint: "Optional. When set, the live test confirms this domain is added and verified in Resend." },
-    ],
+    credentialFields: [{ key: "RESEND_API_KEY", label: "API key", secret: true }],
   },
   {
     id: "twilio_sms",
@@ -413,13 +380,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://www.twilio.com/docs/usage/api",
     accountField: { label: "Sender phone number", hint: "Twilio number or sender ID used as the SMS from-address." },
     credentialGroup: "twilio_sms",
-    alternativeSecrets: [["TWILIO_ACCOUNT_SID", "TWILIO_API_KEY_SID", "TWILIO_API_KEY_SECRET"]],
     credentialFields: [
       { key: "TWILIO_ACCOUNT_SID", label: "Account SID", secret: false, placeholder: "AC..." },
-      { key: "TWILIO_AUTH_TOKEN", label: "Auth token", secret: true, hint: "Or leave empty and use an API key SID + secret below." },
-      { key: "TWILIO_API_KEY_SID", label: "API key SID (optional)", secret: false, placeholder: "SK..." },
-      { key: "TWILIO_API_KEY_SECRET", label: "API key secret (optional)", secret: true },
-      { key: "TWILIO_PHONE_NUMBER", label: "Sender phone number", secret: false, placeholder: "+15551234567", hint: "Optional. The live test confirms this number belongs to the account." },
+      { key: "TWILIO_AUTH_TOKEN", label: "Auth token", secret: true },
     ],
   },
   {
@@ -433,7 +396,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://docs.stripe.com/api",
     credentialGroup: "stripe",
     credentialFields: [
-      { key: "STRIPE_PUBLISHABLE_KEY", label: "Publishable key", secret: false, placeholder: "pk_live_... / pk_test_..." },
       { key: "STRIPE_SECRET_KEY", label: "Secret key", secret: true, placeholder: "sk_live_... / sk_test_..." },
       { key: "STRIPE_WEBHOOK_SECRET", label: "Webhook signing secret", secret: true, placeholder: "whsec_..." },
     ],
@@ -451,7 +413,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     credentialFields: [
       { key: "RAZORPAY_KEY_ID", label: "Key ID", secret: false, placeholder: "rzp_live_..." },
       { key: "RAZORPAY_KEY_SECRET", label: "Key secret", secret: true },
-      { key: "RAZORPAY_WEBHOOK_SECRET", label: "Webhook secret", secret: true, hint: "The secret set on the Razorpay dashboard webhook." },
     ],
   },
   {
@@ -562,9 +523,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredSecrets: [],
     scopes: ["business_management"],
     docsUrl: "https://developers.facebook.com/docs/marketing-api/business-asset-management",
-    // Same Meta developer app as Facebook and Instagram, so it shares their vault group.
-    credentialGroup: "meta",
-    credentialFields: META_FIELDS,
     manualReason:
       "Meta Business Suite data is read through the Facebook and Instagram connections above. A separate Business Suite connection needs the business_management permission, which Meta grants only after App Review.",
     approvalRequired: "business_management requires Meta App Review approval.",
@@ -598,9 +556,6 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
 export const integrationById = (id: string) => INTEGRATIONS.find((i) => i.id === id);
 
 export const credentialGroupOf = (id: string) => integrationById(id)?.credentialGroup ?? id;
-
-export const integrationRedirectUri = (origin: string, providerId: string) =>
-  `${origin}${providerId === "youtube" ? "/api/public/youtube/callback" : "/api/public/integrations/callback"}`;
 
 export type IntegrationStatus = "connected" | "disconnected" | "error" | "expired" | "unavailable";
 

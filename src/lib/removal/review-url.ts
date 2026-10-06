@@ -21,7 +21,7 @@ export type ReviewUrlResult = {
   url: string | null;
   precision: ReviewUrlPrecision;
   /** How the value was obtained. Recorded in the evidence package. */
-  derivation: "provider_supplied" | "derived_from_place_id" | "stored_link_unclassified" | "none";
+  derivation: "provider_supplied" | "derived_from_place_id" | "none";
   /** Documentation backing the URL pattern. null when no URL was produced. */
   patternSource: string | null;
   /** Present only when no URL could be produced. */
@@ -79,45 +79,4 @@ export function deriveReviewUrl(input: {
     patternSource: null,
     reason: "PROVIDER_DATA_UNAVAILABLE",
   };
-}
-
-/** The place link `deriveReviewUrl` builds. A listing link, never a review link. */
-const GOOGLE_PLACE_LINK = /^https:\/\/www\.google\.com\/maps\/place\/\?q=place_id:([A-Za-z0-9_-]+)$/;
-
-/** Trustpilot's public single-review page, /reviews/<review id>. */
-const TRUSTPILOT_REVIEW_PERMALINK = /^https:\/\/(?:[a-z]{2,3}\.)?trustpilot\.com\/reviews\/[A-Za-z0-9]+\/?$/i;
-
-/**
- * Classifies the link stored on a review row at the precision it really has.
- *
- * The Google sync stores the place link in `reviews.review_url`, so a stored
- * URL is not automatically a permalink. A Google place link is recorded at
- * location precision; only a recognised single-review URL is called a
- * permalink; any other stored link is kept but declared at location precision
- * rather than implying it resolves to the one review. With no stored link the
- * place id, when known, feeds the normal derivation.
- */
-export function resolveStoredReviewUrl(input: {
-  platform: string;
-  storedUrl?: string | null;
-  placeId?: string | null;
-}): ReviewUrlResult {
-  const stored = typeof input.storedUrl === "string" ? input.storedUrl.trim() : "";
-  if (stored.startsWith("https://")) {
-    const place = GOOGLE_PLACE_LINK.exec(stored);
-    if (place) {
-      const derived = deriveReviewUrl({ platform: "google", placeId: place[1] ?? null });
-      if (derived.url) return derived;
-    } else if (TRUSTPILOT_REVIEW_PERMALINK.test(stored)) {
-      return deriveReviewUrl({ platform: input.platform, providerUrl: stored });
-    } else {
-      return {
-        url: stored,
-        precision: "location_reviews",
-        derivation: "stored_link_unclassified",
-        patternSource: null,
-      };
-    }
-  }
-  return deriveReviewUrl({ platform: input.platform, placeId: input.placeId ?? null });
 }

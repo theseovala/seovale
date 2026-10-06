@@ -50,10 +50,6 @@ function SystemPage() {
   const queryClient = useQueryClient();
   const [traceId, setTraceId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  // Tracks which scan rows have an action in flight, so one row's action does
-  // not disable every other row's buttons.
-  const [pendingIds, setPendingIds] = useState<string[]>([]);
-  const rowPending = (id: string) => pendingIds.includes(id);
 
   const health = useQuery({ queryKey: ["system-health"], queryFn: () => getSystemHealth(), refetchInterval: 60_000 });
   const monitor = useQuery({ queryKey: ["scan-monitor"], queryFn: () => listScanMonitor(), refetchInterval: 20_000 });
@@ -83,8 +79,6 @@ function SystemPage() {
       }
       throw new Error("Unknown action");
     },
-    onMutate: ({ id }) => setPendingIds((ids) => (ids.includes(id) ? ids : [...ids, id])),
-    onSettled: (_result, _error, variables) => setPendingIds((ids) => ids.filter((id) => id !== variables.id)),
     onSuccess: (_result, variables) => {
       toast.success(`Scan ${variables.action} finished.`);
       setConfirmDelete(null);
@@ -143,8 +137,6 @@ function SystemPage() {
       <Section title="Scan monitoring" description="The last 25 scans with their real stage, sources, AI and output state.">
         {monitor.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : monitor.error ? (
-          <p className="text-sm text-negative">{(monitor.error as Error).message}</p>
         ) : (monitor.data?.scans.length ?? 0) === 0 ? (
           <EmptyState icon={Activity} title="No scans yet" description="Start a scan to see its live progress and trace here." />
         ) : (
@@ -178,24 +170,24 @@ function SystemPage() {
                   <Button size="sm" variant="outline" onClick={() => setTraceId(traceId === scan.id ? null : scan.id)}>
                     <Eye className="mr-1 h-3.5 w-3.5" /> {traceId === scan.id ? "Hide trace" : "View trace"}
                   </Button>
-                  <Button size="sm" variant="outline" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "retry", id: scan.id })}>
+                  <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate({ action: "retry", id: scan.id })}>
                     <RefreshCw className="mr-1 h-3.5 w-3.5" /> Retry
                   </Button>
-                  <Button size="sm" variant="outline" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "resume", id: scan.id })}>
+                  <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate({ action: "resume", id: scan.id })}>
                     <Play className="mr-1 h-3.5 w-3.5" /> Resume
                   </Button>
-                  <Button size="sm" variant="outline" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "pause", id: scan.id })}>
+                  <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate({ action: "pause", id: scan.id })}>
                     <Pause className="mr-1 h-3.5 w-3.5" /> Pause
                   </Button>
-                  <Button size="sm" variant="outline" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "cancel", id: scan.id })}>
+                  <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate({ action: "cancel", id: scan.id })}>
                     <Ban className="mr-1 h-3.5 w-3.5" /> Cancel
                   </Button>
-                  <Button size="sm" variant="outline" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "rerun", id: scan.id, url: scan.target_url })}>
+                  <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate({ action: "rerun", id: scan.id, url: scan.target_url })}>
                     Re-run
                   </Button>
                   {confirmDelete === scan.id ? (
                     <>
-                      <Button size="sm" variant="destructive" disabled={rowPending(scan.id)} onClick={() => act.mutate({ action: "delete", id: scan.id })}>
+                      <Button size="sm" variant="destructive" disabled={act.isPending} onClick={() => act.mutate({ action: "delete", id: scan.id })}>
                         Confirm delete
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(null)}>

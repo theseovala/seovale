@@ -80,7 +80,7 @@ Provider catalogue: `src/lib/integrations/registry.ts` — 26 providers across G
 Standard adapter contract (`src/lib/integrations/providers.server.ts`):
 
 - `providerConfigured(id, creds)` — vault credentials win over environment fallback.
-- `buildAuthorizationUrl / exchangeCode / refreshAccessToken` — real OAuth 2.0 (PKCE where the provider requires it). Facebook Page Login and Instagram Business Login use separate app credentials and provider endpoints; Instagram uses the Instagram app ID/secret, exchanges codes at `api.instagram.com`, and exchanges/refreshes long-lived tokens at `graph.instagram.com`.
+- `buildAuthorizationUrl / exchangeCode / refreshAccessToken` — real OAuth 2.0 (PKCE where the provider requires it; Meta long-lived token exchange).
 - `testIntegration` / `testApiKeyProvider` — one real documented endpoint per provider; results carry a standardized `code`: `CONNECTED`, `NOT_CONFIGURED`, `INVALID_CREDENTIALS`, `AUTHENTICATION_FAILED`, `INSUFFICIENT_SCOPE`, `RATE_LIMITED`, `PROVIDER_ERROR`, `APPROVAL_REQUIRED`, `TOKEN_EXPIRED`, `UNAVAILABLE`.
 - Providers with partner-only APIs (Indeed, Glassdoor) are honestly `UNAVAILABLE`; Google Ads reports `APPROVAL_REQUIRED` until a developer token is granted.
 
@@ -88,7 +88,7 @@ Credential vault: `integration_provider_credentials` — AES-GCM encrypted per f
 
 ## 5. OAuth flow
 
-`startIntegrationOAuth` → encrypted state + PKCE verifier (where supported) stored server-side → provider consent → callback → one-time state hash claim → token exchange → encrypted token storage → live API call to verify. YouTube uses the registered `/api/public/youtube/callback`; other third-party integrations use `/api/public/integrations/callback`. Instagram Business Login uses `INSTAGRAM_APP_ID` and `INSTAGRAM_APP_SECRET`; its redirect URI is derived from the validated application origin and must be registered exactly in Meta (production: `https://seovale.com/api/public/integrations/callback`). Its verified API checks the account, one media's comments when media exists, and the conversations endpoint. Instagram tokens are refreshed with Meta's Instagram refresh endpoint; other providers retain their configured refresh behavior.
+`startIntegrationOAuth` → encrypted state + PKCE verifier stored server-side → provider consent → `/api/public/integrations/callback` → state hash check → token exchange → encrypted token storage → live API call to verify. Refresh happens transparently before any authenticated call; expiry without a refresh token marks the connection `expired`.
 
 ## 6. Webhook flow
 

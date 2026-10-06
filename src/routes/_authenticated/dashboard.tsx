@@ -76,17 +76,13 @@ const chartTip = {
 
 function Dashboard() {
   const { location } = useApp();
-  const { data: allReviews, isLoading: reviewsLoading, error: reviewsError, refetch: refetchReviews } = useLiveReviews();
-  const { data: alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useLiveAlerts();
+  const { data: allReviews, isLoading: reviewsLoading } = useLiveReviews();
+  const { data: alerts, isLoading: alertsLoading } = useLiveAlerts();
   const { data: connectedPlatforms } = useConnectedPlatforms();
 
   const reviews = byLocation(allReviews ?? [], location);
   const summary = computeReputation(reviews);
-  // Alerts follow the same location filter as reviews. Alerts with no
-  // location recorded are workspace-wide, so they stay visible everywhere.
-  const openAlerts = (alerts ?? []).filter(
-    (a) => !a.resolved && (!location || location === "All locations" || !a.location || a.location === location),
-  );
+  const openAlerts = (alerts ?? []).filter((a) => !a.resolved);
   const pending = reviews.filter((r) => r.status === "pending");
   const trend = monthlyTrend(reviews, 7);
   const platformStats = platformPerformance(reviews);
@@ -106,7 +102,6 @@ function Dashboard() {
       : 0;
 
   const isLoading = reviewsLoading || alertsLoading;
-  const loadError = (reviewsError ?? alertsError) as Error | null;
 
   return (
     <AppShell>
@@ -135,27 +130,6 @@ function Dashboard() {
           </>
         }
       />
-
-      {loadError && (
-        <div className="mb-6">
-          <EmptyState
-            icon={ShieldAlert}
-            title="Dashboard data could not be loaded"
-            description={loadError.message || "The request failed. Figures below may be incomplete until it succeeds."}
-            action={
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (reviewsError) void refetchReviews();
-                  if (alertsError) void refetchAlerts();
-                }}
-              >
-                Try again
-              </Button>
-            }
-          />
-        </div>
-      )}
 
       {isLoading ? (
         <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
@@ -215,7 +189,7 @@ function Dashboard() {
             }
             bodyClassName="p-0"
           >
-            {summary.total === 0 && openAlerts.length === 0 ? (
+            {summary.total === 0 ? (
               <div className="p-5">
                 <EmptyState icon={ShieldAlert} title="No verified review data" description="Alerts begin after real reviews are synced." />
               </div>
@@ -259,7 +233,7 @@ function Dashboard() {
         </StatCard>
         <StatCard label="Total reviews" value={summary.total.toLocaleString()} sub={summary.total ? `${summary.sentiment.positive}% positive` : "No verified reviews"} icon={MessagesSquare} tone="primary" />
         <StatCard label="Response rate" value={summary.total ? `${summary.responseRate}%` : "—"} sub={summary.total ? `${summary.unanswered} unanswered` : "No verified reviews"} icon={Timer} tone="positive" />
-        <StatCard label="Open alerts" value={alerts ? openAlerts.length : "—"} sub={`${connectedCount} platforms connected`} icon={ShieldAlert} tone="negative" />
+        <StatCard label="Open alerts" value={summary.total ? openAlerts.length : "—"} sub={summary.total ? `${connectedCount} platforms connected` : "No verified reviews"} icon={ShieldAlert} tone="negative" />
       </div>
 
       {/* Charts */}

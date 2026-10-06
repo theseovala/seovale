@@ -46,19 +46,8 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         const mode = url.searchParams.get("hub.mode");
         const token = url.searchParams.get("hub.verify_token");
         const challenge = url.searchParams.get("hub.challenge");
-        if (mode !== "subscribe" || !challenge || !token) return new Response("Forbidden", { status: 403 });
-        // Verify token: server environment first, then any workspace's saved Meta or
-        // WhatsApp verify token. The handshake only echoes the challenge — no data is written.
-        const { matchWebhookSecret, safeEqual } = await import("@/lib/integrations/webhook-secrets.server");
-        const match = await matchWebhookSecret(
-          ["META_WEBHOOK_VERIFY_TOKEN", "WHATSAPP_WEBHOOK_VERIFY_TOKEN"],
-          [
-            { group: "meta", field: "META_WEBHOOK_VERIFY_TOKEN" },
-            { group: "whatsapp", field: "WHATSAPP_WEBHOOK_VERIFY_TOKEN" },
-          ],
-          (expected) => safeEqual(token, expected),
-        );
-        if (match.env || match.workspaceIds.length > 0) {
+        const expected = process.env["META_WEBHOOK_VERIFY_TOKEN"];
+        if (mode === "subscribe" && challenge && expected && token === expected) {
           return new Response(challenge, { status: 200 });
         }
         return new Response("Forbidden", { status: 403 });
@@ -72,77 +61,49 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         const raw = await request.text();
 
         // ---- Signature verification (never process unverified payloads) ----
-        // Secrets come from the server environment first, then from every workspace's
-        // vault; which workspace's secret matched is checked against the payload below.
-        const { matchWebhookSecret, secretCoversWorkspace } = await import("@/lib/integrations/webhook-secrets.server");
         let signatureValid = false;
         let verifyError = "";
-        let secretMatch: Awaited<ReturnType<typeof matchWebhookSecret>> = { configured: false, env: false, workspaceIds: [] };
         if (provider === "meta") {
+          const secret = process.env["FACEBOOK_APP_SECRET"];
           const header = request.headers.get("x-hub-signature-256") ?? "";
-          secretMatch = header.startsWith("sha256=")
-            ? await matchWebhookSecret(["FACEBOOK_APP_SECRET"], [{ group: "meta", field: "FACEBOOK_APP_SECRET" }], (secret) => {
-                const expected = createHmac("sha256", secret).update(raw).digest("hex");
-                try {
-                  return timingSafeEqual(Buffer.from(header.slice(7), "hex"), Buffer.from(expected, "hex"));
-                } catch {
-                  return false;
-                }
-              })
-            : await matchWebhookSecret(["FACEBOOK_APP_SECRET"], [{ group: "meta", field: "FACEBOOK_APP_SECRET" }], () => false);
-          signatureValid = secretMatch.env || secretMatch.workspaceIds.length > 0;
-          if (!secretMatch.configured) verifyError = "No Meta app secret configured for signature verification.";
+          if (!secret) verifyError = "No Meta app secret configured for signature verification.";
           else if (!header.startsWith("sha256=")) verifyError = "Missing x-hub-signature-256 header.";
-          else if (!signatureValid) verifyError = "Meta signature mismatch.";
+          else {
+            const expected = createHmac("sha256", secret).update(raw).digest("hex");
+            try {
+              signatureValid = timingSafeEqual(Buffer.from(header.slice(7), "hex"), Buffer.from(expected, "hex"));
+            } catch {
+              signatureValid = false;
+            }
+            if (!signatureValid) verifyError = "Meta signature mismatch.";
+          }
         } else if (provider === "twitter") {
+          const secret = process.env["TWITTER_CLIENT_SECRET"];
           const header = request.headers.get("x-twitter-webhooks-signature") ?? "";
-          // X signs with the app's consumer secret; the OAuth 2.0 client secret is kept as a fallback.
-          secretMatch = await matchWebhookSecret(
-            ["TWITTER_CONSUMER_SECRET", "TWITTER_CLIENT_SECRET"],
-            [
-              { group: "twitter", field: "TWITTER_CONSUMER_SECRET" },
-              { group: "twitter", field: "TWITTER_CLIENT_SECRET" },
-            ],
-            (secret) => {
-              const expected = createHmac("sha256", secret).update(raw).digest("base64");
-              // X sends "sha256=<base64>"; compare only the digest part.
-              const provided = Buffer.from(header.replace(/^sha256=/i, ""));
-              const wanted = Buffer.from(expected);
-              try {
-                return provided.length === wanted.length && timingSafeEqual(provided, wanted);
-              } catch {
-                return false;
-              }
-            },
-          );
-          signatureValid = secretMatch.env || secretMatch.workspaceIds.length > 0;
-          if (!secretMatch.configured) verifyError = "No X consumer secret configured for signature verification.";
-          else if (!signatureValid) verifyError = "X signature mismatch.";
+          if (!secret) verifyError = "No X consumer secret configured for signature verification.";
+          else {
+            const expected = createHmac("sha256", secret).update(raw).digest("base64");
+            try {
+              signatureValid = timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+            } catch {
+              signatureValid = false;
+            }
+            if (!signatureValid) verifyError = "X signature mismatch.";
+          }
         } else {
           // Trustpilot signs with a shared secret when configured.
+          const secret = process.env["TRUSTPILOT_WEBHOOK_SECRET"];
           const header = request.headers.get("tp-signature") ?? "";
-          secretMatch = await matchWebhookSecret(
-            ["TRUSTPILOT_WEBHOOK_SECRET"],
-            [{ group: "trustpilot", field: "TRUSTPILOT_WEBHOOK_SECRET" }],
-            (secret) => {
-              const expected = createHmac("sha256", secret).update(raw).digest("hex");
-              const provided = Buffer.from(header);
-              const wanted = Buffer.from(expected);
-              return provided.length === wanted.length && timingSafeEqual(provided, wanted);
-            },
-          );
-          signatureValid = secretMatch.env || secretMatch.workspaceIds.length > 0;
-          if (!secretMatch.configured) verifyError = "No Trustpilot webhook secret configured.";
-          else if (!signatureValid) verifyError = "Trustpilot signature mismatch.";
+          if (!secret) verifyError = "No Trustpilot webhook secret configured.";
+          else {
+            const expected = createHmac("sha256", secret).update(raw).digest("hex");
+            signatureValid = header === expected;
+            if (!signatureValid) verifyError = "Trustpilot signature mismatch.";
+          }
         }
         if (!signatureValid) {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          // Anyone can reach this endpoint unauthenticated, so the audit rows for
-          // rejected deliveries are capped per provider; past the cap the request
-          // is still refused, it is just not stored again.
-          const { consumeAbuseLimit } = await import("@/lib/ops.server");
-          const logBudget = await consumeAbuseLimit(supabaseAdmin, "webhook_rejected_log", provider, 100, 600);
-          if (logBudget.allowed) await supabaseAdmin.from("integration_webhook_events").insert({
+          await supabaseAdmin.from("integration_webhook_events").insert({
             provider,
             event_type: "rejected",
             signature_valid: false,
@@ -196,14 +157,6 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         } else {
           providerEventId = payload["eventId"] ?? null;
           eventType = String(payload["eventType"] ?? "unknown");
-          // Trustpilot payloads carry no account id; a signing secret saved by exactly one
-          // workspace is what attributes the delivery to that workspace.
-          if (!secretMatch.env && secretMatch.workspaceIds.length === 1) workspaceId = secretMatch.workspaceIds[0] ?? null;
-        }
-
-        // A workspace's own secret may only authenticate events for that workspace.
-        if (workspaceId && !secretCoversWorkspace(secretMatch, workspaceId)) {
-          return Response.json({ error: "Signature was not made with this account's configured secret." }, { status: 401 });
         }
 
         // Deduplicate: the unique partial index makes repeats idempotent.

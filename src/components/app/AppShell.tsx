@@ -413,11 +413,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="font-semibold text-foreground">{BRAND.name}</span> — Your reputation, one
               command center.
             </p>
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span>All figures are calculated from your connected review data.</span>
-              <Link to="/privacy" className="hover:text-foreground hover:underline">Privacy</Link>
-              <Link to="/terms" className="hover:text-foreground hover:underline">Terms</Link>
-            </p>
+            <p>All figures are calculated from your connected review data.</p>
           </footer>
         </div>
       </div>

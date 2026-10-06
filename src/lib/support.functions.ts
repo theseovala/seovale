@@ -10,23 +10,7 @@ const settingsSchema = z.object({
   whatsapp: z.string().max(40).nullable(),
   email: z.string().max(200).nullable(),
   hours: z.string().max(200).nullable(),
-  // Rendered as a link on the Support page, so only http(s) URLs are accepted
-  // (a javascript: or data: URL would otherwise become a clickable href).
-  // An empty value is still allowed and is stored as "not set".
-  helpUrl: z
-    .string()
-    .max(300)
-    .nullable()
-    .refine((value) => {
-      const trimmed = value?.trim() ?? "";
-      if (trimmed.length === 0) return true;
-      try {
-        const url = new URL(trimmed);
-        return url.protocol === "http:" || url.protocol === "https:";
-      } catch {
-        return false;
-      }
-    }, "Help centre link must be a full http:// or https:// address."),
+  helpUrl: z.string().max(300).nullable(),
   defaultMessage: z.string().max(500).nullable(),
 });
 
