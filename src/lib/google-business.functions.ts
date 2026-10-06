@@ -92,12 +92,12 @@ export const syncGoogleBusinessReviews = createServerFn({ method: "POST" })
           const { data: existing } = await context.supabase.from("reviews").select("id").eq("workspace_id", member.workspace_id).eq("platform", "google").eq("external_id", review.id).maybeSingle();
           let storedReviewId: string;
           if (existing) {
-            const { error: updateError } = await context.supabase.from("reviews").update({ author: review.author, rating: review.rating, body: review.body, sentiment, priority, location_name: batch.location.name, external_created_at: review.createdAt, review_url: reviewUrl }).eq("id", existing.id);
+            const { error: updateError } = await context.supabase.from("reviews").update({ author: review.author, rating: review.rating, body: review.body, sentiment, priority, location_name: batch.location.name, external_created_at: review.createdAt, review_url: reviewUrl as never }).eq("id", existing.id);
             if (updateError) throw updateError;
             storedReviewId = existing.id;
             updated += 1;
           } else {
-            const { data: inserted, error: insertError } = await context.supabase.from("reviews").insert({ workspace_id: member.workspace_id, platform: "google", external_id: review.id, source: "google_business", author: review.author, rating: review.rating, sentiment, status: "pending", priority, location_name: batch.location.name, body: review.body, external_created_at: review.createdAt, review_url: reviewUrl }).select("id").single();
+            const { data: inserted, error: insertError } = await context.supabase.from("reviews").insert({ workspace_id: member.workspace_id, platform: "google", external_id: review.id, source: "google_business", author: review.author, rating: review.rating, sentiment, status: "pending", priority, location_name: batch.location.name, body: review.body, external_created_at: review.createdAt, review_url: reviewUrl as never }).select("id").single();
             if (insertError) throw insertError;
             storedReviewId = inserted.id;
             created += 1;
