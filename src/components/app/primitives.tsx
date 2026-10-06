@@ -2,8 +2,12 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Star, TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND, platforms, type PlatformId, type Sentiment, type ReviewStatus } from "@/lib/domain";
-import darkCoinAsset from "@/assets/seovale-coin-dark.jpg.asset.json";
-import lightCoinAsset from "@/assets/seovale-coin-light.jpg.asset.json";
+// The artwork is imported as a real file so the bundler hashes it and serves it
+// from this deployment. The matching `.asset.json` pointers describe the same
+// images on Lovable's asset host, which only resolves behind the Lovable dev
+// proxy — in production those URLs 404, which left the coin blank.
+import darkCoinUrl from "@/assets/seovale-coin-dark.jpg";
+import lightCoinUrl from "@/assets/seovale-coin-light.jpg";
 import { Button } from "@/components/ui/button";
 
 /* ---------- Page header ---------- */
@@ -264,6 +268,7 @@ export function EmptyState({ icon: Icon, title, description, action }: { icon: L
 /* ---------- Interactive brand coin ---------- */
 export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" | "lg"; light?: boolean }) {
   const spinTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spinning = useRef(false);
   const sizeClass = { sm: "brand-coin-sm", md: "brand-coin-md", lg: "brand-coin-lg" }[size];
 
   useEffect(() => () => {
@@ -271,18 +276,23 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
   }, []);
 
   function spin(event: React.MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     const button = event.currentTarget;
     const coin = button.querySelector<HTMLElement>(".brand-coin");
-    if (!coin || button.disabled) return;
-    button.disabled = true;
+    // Re-entry is guarded with a ref rather than the disabled attribute.
+    // Disabling a focused button blurs it, so a keyboard user would lose their
+    // place after every press; and a React re-render during the spin would
+    // reset an imperatively set attribute, letting a second click restart the
+    // animation mid-flight. Neither happens with a ref.
+    if (!coin || spinning.current) return;
+    spinning.current = true;
     button.setAttribute("aria-busy", "true");
-    button.setAttribute("aria-label", `${BRAND.name} logo rotating`);
     coin.classList.add("brand-coin-spinning");
     spinTimer.current = setTimeout(() => {
       coin.classList.remove("brand-coin-spinning");
-      button.disabled = false;
       button.setAttribute("aria-busy", "false");
-      button.setAttribute("aria-label", `Rotate ${BRAND.name} logo`);
+      spinning.current = false;
       spinTimer.current = null;
     }, 840);
   }
@@ -299,8 +309,22 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
     >
       <span className="brand-coin" aria-hidden="true">
         <span className="brand-coin-edge" />
-        <img className="brand-coin-face brand-coin-front" src={darkCoinAsset.url} alt="" draggable={false} />
-        <img className="brand-coin-face brand-coin-back" src={lightCoinAsset.url} alt="" draggable={false} />
+        <img
+          className="brand-coin-face brand-coin-front"
+          src={darkCoinUrl}
+          alt=""
+          width={700}
+          height={700}
+          draggable={false}
+        />
+        <img
+          className="brand-coin-face brand-coin-back"
+          src={lightCoinUrl}
+          alt=""
+          width={700}
+          height={700}
+          draggable={false}
+        />
       </span>
     </Button>
   );
