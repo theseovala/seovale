@@ -36,6 +36,7 @@ import { Route as ApiPublicIntegrationsJobsRunRouteImport } from './routes/api/p
 import { Route as ApiPublicIntegrationsWebhookRouteImport } from './routes/api/public/integrations/webhook'
 import { Route as ApiPublicLicenseActivateRouteImport } from './routes/api/public/license/activate'
 import { Route as ApiPublicLicenseDownloadRouteImport } from './routes/api/public/license/download'
+import { Route as ApiPublicLicenseSessionRouteImport } from './routes/api/public/license/session'
 import { Route as ApiPublicLicenseUpdateCheckRouteImport } from './routes/api/public/license/update-check'
 import { Route as ApiPublicLicenseValidateRouteImport } from './routes/api/public/license/validate'
 
@@ -181,6 +182,11 @@ const ApiPublicLicenseDownloadRoute =
     path: '/api/public/license/download',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicLicenseSessionRoute = ApiPublicLicenseSessionRouteImport.update({
+  id: '/api/public/license/session',
+  path: '/api/public/license/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicLicenseUpdateCheckRoute =
   ApiPublicLicenseUpdateCheckRouteImport.update({
     id: '/api/public/license/update-check',
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/api/public/integrations/webhook': typeof ApiPublicIntegrationsWebhookRoute
   '/api/public/license/activate': typeof ApiPublicLicenseActivateRoute
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
+  '/api/public/license/session': typeof ApiPublicLicenseSessionRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
 }
@@ -251,6 +258,7 @@ export interface FileRoutesByTo {
   '/api/public/integrations/webhook': typeof ApiPublicIntegrationsWebhookRoute
   '/api/public/license/activate': typeof ApiPublicLicenseActivateRoute
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
+  '/api/public/license/session': typeof ApiPublicLicenseSessionRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
 }
@@ -283,6 +291,7 @@ export interface FileRoutesById {
   '/api/public/integrations/webhook': typeof ApiPublicIntegrationsWebhookRoute
   '/api/public/license/activate': typeof ApiPublicLicenseActivateRoute
   '/api/public/license/download': typeof ApiPublicLicenseDownloadRoute
+  '/api/public/license/session': typeof ApiPublicLicenseSessionRoute
   '/api/public/license/update-check': typeof ApiPublicLicenseUpdateCheckRoute
   '/api/public/license/validate': typeof ApiPublicLicenseValidateRoute
 }
@@ -315,6 +324,7 @@ export interface FileRouteTypes {
     | '/api/public/integrations/webhook'
     | '/api/public/license/activate'
     | '/api/public/license/download'
+    | '/api/public/license/session'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
   fileRoutesByTo: FileRoutesByTo
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
     | '/api/public/integrations/webhook'
     | '/api/public/license/activate'
     | '/api/public/license/download'
+    | '/api/public/license/session'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
   id:
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/api/public/integrations/webhook'
     | '/api/public/license/activate'
     | '/api/public/license/download'
+    | '/api/public/license/session'
     | '/api/public/license/update-check'
     | '/api/public/license/validate'
   fileRoutesById: FileRoutesById
@@ -392,6 +404,7 @@ export interface RootRouteChildren {
   ApiPublicIntegrationsWebhookRoute: typeof ApiPublicIntegrationsWebhookRoute
   ApiPublicLicenseActivateRoute: typeof ApiPublicLicenseActivateRoute
   ApiPublicLicenseDownloadRoute: typeof ApiPublicLicenseDownloadRoute
+  ApiPublicLicenseSessionRoute: typeof ApiPublicLicenseSessionRoute
   ApiPublicLicenseUpdateCheckRoute: typeof ApiPublicLicenseUpdateCheckRoute
   ApiPublicLicenseValidateRoute: typeof ApiPublicLicenseValidateRoute
 }
@@ -587,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLicenseDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/license/session': {
+      id: '/api/public/license/session'
+      path: '/api/public/license/session'
+      fullPath: '/api/public/license/session'
+      preLoaderRoute: typeof ApiPublicLicenseSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/license/update-check': {
       id: '/api/public/license/update-check'
       path: '/api/public/license/update-check'
@@ -657,6 +677,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicIntegrationsWebhookRoute: ApiPublicIntegrationsWebhookRoute,
   ApiPublicLicenseActivateRoute: ApiPublicLicenseActivateRoute,
   ApiPublicLicenseDownloadRoute: ApiPublicLicenseDownloadRoute,
+  ApiPublicLicenseSessionRoute: ApiPublicLicenseSessionRoute,
   ApiPublicLicenseUpdateCheckRoute: ApiPublicLicenseUpdateCheckRoute,
   ApiPublicLicenseValidateRoute: ApiPublicLicenseValidateRoute,
 }
