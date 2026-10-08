@@ -4,6 +4,7 @@ import { streamText } from "ai";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertReviewAiAllowed, isGoogleReview } from "@/lib/google-review-privacy";
 
 const DraftInput = z.object({
   reviewId: z.string().uuid(),
@@ -80,13 +81,14 @@ export const draftReply = createServerFn({ method: "POST" })
     const scopeId = await workspaceIdFor(context);
     const { data: review, error } = await context.supabase
       .from("reviews")
-      .select("author, rating, sentiment, platform, location_name, title, body, tags")
+      .select("author, rating, sentiment, platform, source, location_name, title, body, tags")
       .eq("id", data.reviewId)
       .eq("workspace_id", scopeId)
       .neq("source", "seed")
       .maybeSingle();
     if (error) throw error;
     if (!review) throw new Error("That review no longer exists.");
+    assertReviewAiAllowed(review);
 
     const { data: brand } = await context.supabase
       .from("brand_settings")
@@ -116,7 +118,9 @@ export const draftReply = createServerFn({ method: "POST" })
       .filter(Boolean)
       .join("\n");
 
-    const result = await runAudited(context, "reply_draft", system, prompt, { reviewId: data.reviewId });
+    const result = await runAudited(context, "reply_draft", system, prompt, {
+      reviewId: data.reviewId,
+    });
     return { reply: result.output };
   });
 
@@ -132,7 +136,7 @@ export const analyseFeedback = createServerFn({ method: "POST" })
     const scopeId = await workspaceIdFor(context);
     let query = context.supabase
       .from("reviews")
-      .select("rating, sentiment, platform, location_name, body, tags, external_created_at")
+      .select("rating, sentiment, platform, source, location_name, body, tags, external_created_at")
       .eq("workspace_id", scopeId)
       .neq("source", "seed")
       .order("external_created_at", { ascending: false })
@@ -140,9 +144,11 @@ export const analyseFeedback = createServerFn({ method: "POST" })
     if (data.location && data.location !== "All locations") {
       query = query.eq("location_name", data.location);
     }
-    const { data: reviews, error } = await query;
+    const { data: storedReviews, error } = await query;
     if (error) throw error;
-    if (!reviews || reviews.length === 0) return { insight: "There are no reviews to analyse yet." };
+    const reviews = storedReviews?.filter((review) => !isGoogleReview(review)) ?? [];
+    if (reviews.length === 0)
+      return { insight: "No non-Google reviews are available for AI analysis." };
 
     const system = [
       "You are a reputation analyst. You are given recent customer reviews for a multi-location business.",
@@ -175,15 +181,19 @@ export const generateReport = createServerFn({ method: "POST" })
     const workspaceId = await workspaceIdFor(context);
     let query = context.supabase
       .from("reviews")
-      .select("rating, sentiment, status, platform, location_name, body, external_created_at")
+      .select(
+        "rating, sentiment, status, platform, source, location_name, body, external_created_at",
+      )
       .eq("workspace_id", workspaceId)
       .neq("source", "seed")
       .order("external_created_at", { ascending: false })
       .limit(300);
     if (data.scope !== "All locations") query = query.eq("location_name", data.scope);
-    const { data: reviews, error } = await query;
+    const { data: storedReviews, error } = await query;
     if (error) throw error;
-    if (!reviews || reviews.length === 0) throw new Error("There is no review data for that scope yet.");
+    const reviews = storedReviews?.filter((review) => !isGoogleReview(review)) ?? [];
+    if (reviews.length === 0)
+      throw new Error("No non-Google reviews are available for AI reporting.");
 
     const total = reviews.length;
     const avg = (reviews.reduce((s, r) => s + r.rating, 0) / total).toFixed(2);
@@ -205,7 +215,9 @@ export const generateReport = createServerFn({ method: "POST" })
       `Positive share: ${Math.round((positive / total) * 100)}%`,
       `Answered: ${Math.round((answered / total) * 100)}%`,
       "Sample of recent reviews:",
-      ...reviews.slice(0, 40).map((r) => `${r.rating}★ ${r.location_name} (${r.platform}): ${r.body}`),
+      ...reviews
+        .slice(0, 40)
+        .map((r) => `${r.rating}★ ${r.location_name} (${r.platform}): ${r.body}`),
     ].join("\n");
 
     const started = Date.now();

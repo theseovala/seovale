@@ -1,5 +1,7 @@
 // Shared review-removal scan engine. Used by the manual scan (server function)
 // and by the scheduled scan route. Works with any Supabase client instance.
+import { isGoogleReview } from "@/lib/google-review-privacy";
+import { z } from "zod";
 export const VIOLATIONS = [
   "fake_or_incentivised",
   "spam_or_advertising",
@@ -10,7 +12,7 @@ export const VIOLATIONS = [
   "personal_information",
 ] as const;
 
-export const SCAN_SYSTEM = `You assess customer reviews against Google Business Profile and Trustpilot content policies.
+export const SCAN_SYSTEM = `You assess non-Google customer reviews against platform content policies.
 Flag a review ONLY when it plainly breaks a policy: fake or incentivised, spam or advertising, hate or harassment,
 profanity or obscenity, off-topic (not about the business experience), conflict of interest (competitor or ex-staff),
 or exposure of personal information. A genuinely negative but honest review is NOT a violation — never flag it.
@@ -24,19 +26,35 @@ Reply with JSON only, no prose and no code fences, in this exact shape:
 Return an empty results array when nothing breaks policy.`;
 
 export function parseScanResults(text: string) {
-  const cleaned = text.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const cleaned = text
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/, "")
+    .trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start === -1 || end === -1) return [];
+  if (start === -1 || end === -1) throw new Error("AI review scan returned malformed JSON.");
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(cleaned.slice(start, end + 1));
-    const results = Array.isArray(parsed?.results) ? parsed.results : [];
-    return results.filter(
-      (r: any) => typeof r?.id === "string" && (VIOLATIONS as readonly string[]).includes(r?.violation),
-    ) as Array<{ id: string; violation: string; confidence: number; rationale: string; appeal?: string }>;
+    parsed = JSON.parse(cleaned.slice(start, end + 1));
   } catch {
-    return [];
+    throw new Error("AI review scan returned malformed JSON.");
   }
+  const response = z
+    .object({
+      results: z.array(
+        z.object({
+          id: z.string(),
+          violation: z.string(),
+          confidence: z.number().finite(),
+          rationale: z.string(),
+          appeal: z.string().optional(),
+        }),
+      ),
+    })
+    .parse(parsed);
+  return response.results.filter((result) =>
+    (VIOLATIONS as readonly string[]).includes(result.violation),
+  );
 }
 
 /**
@@ -81,7 +99,9 @@ export async function runRemovalScan(
 
   const { data: reviews, error } = await client
     .from("reviews")
-    .select("id, author, rating, body, platform, location_name, external_created_at, external_id, review_url")
+    .select(
+      "id, author, rating, body, platform, source, location_name, external_created_at, external_id, review_url",
+    )
     .eq("workspace_id", workspaceId)
     .neq("source", "seed")
     .order("external_created_at", { ascending: false })
@@ -89,7 +109,13 @@ export async function runRemovalScan(
   if (error) throw error;
 
   const pending = ((reviews ?? []) as any[])
-    .filter((r) => !assessed.has(r.id) && typeof r.body === "string" && r.body.trim().length > 0)
+    .filter(
+      (r) =>
+        !isGoogleReview(r) &&
+        !assessed.has(r.id) &&
+        typeof r.body === "string" &&
+        r.body.trim().length > 0,
+    )
     .slice(0, limit);
 
   if (pending.length === 0) return { checked: 0, flagged: 0 };
@@ -133,15 +159,25 @@ export async function runRemovalScan(
     const rows = results.map((r) => {
       const review = pending.find((p) => p.id === r.id)!;
       const confidence = Math.max(0, Math.min(1, Number(r.confidence) || 0));
-      const rationale = String(r.rationale ?? "").slice(0, 1000) || "Flagged by automatic policy scan.";
+      const rationale =
+        String(r.rationale ?? "").slice(0, 1000) || "Flagged by automatic policy scan.";
 
-      const routes = detectRoutes({ platform: review.platform, violation: r.violation, capability });
+      const routes = detectRoutes({
+        platform: review.platform,
+        violation: r.violation,
+        capability,
+      });
 
       // The stored URL is used when the sync captured one. When it did not, the
       // derivation runs again here rather than a link being invented, and it
       // reports "unavailable" if provider data does not support one.
       const link = review.review_url
-        ? { url: review.review_url as string, precision: "review_permalink" as const, derivation: "provider_supplied", patternSource: null }
+        ? {
+            url: review.review_url as string,
+            precision: "review_permalink" as const,
+            derivation: "provider_supplied",
+            patternSource: null,
+          }
         : deriveReviewUrl({ platform: review.platform });
 
       // BEFORE: the state of the review at the moment the case was opened. No

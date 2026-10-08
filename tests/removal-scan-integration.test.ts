@@ -28,21 +28,21 @@ const FIXTURE_REVIEWS = [
     author: "Fixture Spammer",
     rating: 1,
     body: "FIXTURE: visit cheap-deals.test for discount vouchers, unrelated to this shop",
-    platform: "google",
+    platform: "trustpilot",
     location_name: "Fixture Location",
     external_created_at: "2026-09-01T09:00:00.000Z",
-    external_id: "gbp:LOC_FIXTURE:REV_ONE",
-    review_url: "https://www.google.com/maps/place/?q=place_id:ChIJFixturePlace",
+    external_id: "trustpilot-fixture-one",
+    review_url: "https://www.trustpilot.com/reviews/fixture-one",
   },
   {
     id: "55555555-5555-4555-8555-555555555555",
     author: "Fixture Honest Customer",
     rating: 2,
     body: "FIXTURE: the delivery was three days late and nobody answered the phone",
-    platform: "google",
+    platform: "trustpilot",
     location_name: "Fixture Location",
     external_created_at: "2026-09-02T09:00:00.000Z",
-    external_id: "gbp:LOC_FIXTURE:REV_TWO",
+    external_id: "trustpilot-fixture-two",
     review_url: null,
   },
 ];
@@ -202,10 +202,10 @@ describe("runRemovalScan writes a complete, honest case", () => {
     });
   });
 
-  test("reports the reply route as needing provider approval, read from the real granted scopes", () => {
+  test("reports non-Google reply/report routes as requiring manual action", () => {
     const routes: DetectedRoute[] = firstCase().evidence.routes;
     expect(routes.find((r) => r.route === "public_reply_mitigation")!.actionState).toBe(
-      "PROVIDER_APPROVAL_REQUIRED",
+      "MANUAL_ACTION_REQUIRED",
     );
     expect(routes.find((r) => r.route === "platform_policy_report")!.actionState).toBe(
       "MANUAL_ACTION_REQUIRED",
@@ -267,9 +267,10 @@ describe("runRemovalScan refuses invented model output", () => {
     expect(result.flagged).toBe(0);
   });
 
-  test("treats unparseable model output as nothing flagged, not as an error state", async () => {
+  test("records malformed model output as a failed scan instead of false success", async () => {
     stubAiOutput = "I am not JSON at all.";
-    const result = await runScan();
-    expect(result).toEqual({ checked: 2, flagged: 0 });
+    await expect(runScan()).rejects.toThrow("malformed JSON");
+    const scan = writes.find((write) => write.table === "removal_scans");
+    expect(scan?.rows).toMatchObject({ status: "failed", reviews_checked: 2, reviews_flagged: 0 });
   });
 });

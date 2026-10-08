@@ -3,8 +3,12 @@
 // Exponential backoff on retry, dead-letter on exhaustion, idempotency keys
 // prevent duplicate work. No simulated jobs are ever enqueued.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
-export type JobStatus = "pending" | "processing" | "completed" | "failed" | "retrying" | "cancelled";
+export type JobStatus =
+  "pending" | "processing" | "completed" | "failed" | "retrying" | "cancelled";
+export type IntegrationJob = Database["public"]["Tables"]["integration_sync_jobs"]["Row"];
+type JobLease = Pick<IntegrationJob, "id" | "attempts" | "lease_expires_at">;
 
 export interface EnqueueJobInput {
   workspaceId: string;
@@ -44,39 +48,61 @@ export async function enqueueJob(
 
 /** Claims due jobs by leasing them (single-flight friendly; cron callers are one at a time). */
 export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMinutes = 5) {
+  const now = new Date().toISOString();
   const { data: due, error } = await admin
     .from("integration_sync_jobs")
-    .select("id,workspace_id,provider,job_type,payload,attempts,max_attempts,started_at")
+    .select("*")
     .in("status", ["pending", "retrying"])
-    .lte("next_attempt_at", new Date().toISOString())
-    .or(`lease_expires_at.is.null,lease_expires_at.lt.${new Date().toISOString()}`)
+    .lte("next_attempt_at", now)
+    .or(`lease_expires_at.is.null,lease_expires_at.lt.${now}`)
     .order("priority", { ascending: true })
     .order("next_attempt_at", { ascending: true })
     .limit(limit);
   if (error) throw error;
   const rows = due ?? [];
-  const claimed: typeof rows = [];
+  const claimed: IntegrationJob[] = [];
   for (const job of rows) {
-    const { data } = await admin
-      .from("integration_sync_jobs")
-      .update({
-        status: "processing" as JobStatus,
-        lease_expires_at: new Date(Date.now() + leaseMinutes * 60_000).toISOString(),
-        started_at: job.started_at ?? new Date().toISOString(),
-        attempts: job.attempts + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job.id)
-      .in("status", ["pending", "retrying"])
-      .select()
-      .single();
-    if (data) claimed.push(data as any);
+    const leased = await claimJob(admin, job, leaseMinutes);
+    if (leased) claimed.push(leased);
   }
   return claimed;
 }
 
-export async function completeJob(admin: SupabaseClient, jobId: string) {
-  await admin
+async function claimJob(admin: SupabaseClient, job: IntegrationJob, leaseMinutes: number) {
+  const now = new Date().toISOString();
+  const { data, error } = await admin
+    .from("integration_sync_jobs")
+    .update({
+      status: "processing" as JobStatus,
+      lease_expires_at: new Date(Date.now() + leaseMinutes * 60_000).toISOString(),
+      started_at: job.started_at ?? now,
+      attempts: job.attempts + 1,
+      updated_at: now,
+    })
+    .eq("id", job.id)
+    .eq("attempts", job.attempts)
+    .in("status", ["pending", "retrying"])
+    .lte("next_attempt_at", now)
+    .or(`lease_expires_at.is.null,lease_expires_at.lt.${now}`)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data as IntegrationJob | null;
+}
+
+export async function claimPendingJob(admin: SupabaseClient, jobId: string) {
+  const { data, error } = await admin
+    .from("integration_sync_jobs")
+    .select("*")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? claimJob(admin, data, 5) : null;
+}
+
+export async function completeJob(admin: SupabaseClient, job: JobLease) {
+  const now = new Date().toISOString();
+  const { data, error } = await admin
     .from("integration_sync_jobs")
     .update({
       status: "completed" as JobStatus,
@@ -85,14 +111,26 @@ export async function completeJob(admin: SupabaseClient, jobId: string) {
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", jobId);
+    .eq("id", job.id)
+    .eq("status", "processing")
+    .eq("attempts", job.attempts)
+    .eq("lease_expires_at", job.lease_expires_at)
+    .gt("lease_expires_at", now)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job completion refused: worker no longer owns an active lease.");
 }
 
 /** Retry with exponential backoff; dead-letters after max_attempts (no infinite loops). */
-export async function failJob(admin: SupabaseClient, job: { id: string; attempts: number; max_attempts: number }, errorMessage: string) {
+export async function failJob(
+  admin: SupabaseClient,
+  job: JobLease & Pick<IntegrationJob, "max_attempts">,
+  errorMessage: string,
+) {
   const exhausted = job.attempts >= job.max_attempts;
   const backoffSeconds = Math.min(2 ** job.attempts * 60, 3600);
-  await admin
+  const { data, error } = await admin
     .from("integration_sync_jobs")
     .update({
       status: (exhausted ? "failed" : "retrying") as JobStatus,
@@ -102,9 +140,29 @@ export async function failJob(admin: SupabaseClient, job: { id: string; attempts
       updated_at: new Date().toISOString(),
       ...(exhausted ? { completed_at: new Date().toISOString() } : {}),
     })
-    .eq("id", job.id);
+    .eq("id", job.id)
+    .eq("status", "processing")
+    .eq("attempts", job.attempts)
+    .eq("lease_expires_at", job.lease_expires_at)
+    .gt("lease_expires_at", new Date().toISOString())
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Job failure update refused: worker no longer owns an active lease.");
 }
 
 export async function cancelJob(admin: SupabaseClient, jobId: string) {
-  await admin.from("integration_sync_jobs").update({ status: "cancelled" as JobStatus, updated_at: new Date().toISOString() }).eq("id", jobId);
+  const { data, error } = await admin
+    .from("integration_sync_jobs")
+    .update({
+      status: "cancelled" as JobStatus,
+      lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId)
+    .in("status", ["pending", "retrying", "processing"])
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("The job is no longer cancellable.");
 }

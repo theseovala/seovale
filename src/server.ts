@@ -49,7 +49,18 @@ export default {
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      const commit = process.env["SEOVALE_DEPLOYED_COMMIT"];
+      if (commit && /^[0-9a-f]{40}$/.test(commit)) {
+        const headers = new Headers(normalized.headers);
+        headers.set("x-seovale-commit", commit);
+        return new Response(normalized.body, {
+          status: normalized.status,
+          statusText: normalized.statusText,
+          headers,
+        });
+      }
+      return normalized;
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

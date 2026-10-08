@@ -10,7 +10,12 @@ import {
   startGoogleBusinessConnection,
   syncGoogleBusinessReviews,
 } from "@/lib/google-business.functions";
-import { saveProviderCredentials, testIntegration } from "@/lib/integrations.functions";
+import {
+  saveIntegrationAccount,
+  saveProviderCredentials,
+  testIntegration,
+} from "@/lib/integrations.functions";
+import { searchGooglePlacesForWorkspace } from "@/lib/google-places.functions";
 
 /** Opens Google authorization reliably, even inside a sandboxed preview frame. */
 function openAuthorization(url: string, authWindow: Window | null) {
@@ -75,7 +80,9 @@ function StepList({ steps }: { steps: Step[] }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold">{step.title}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{step.detail}</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {step.detail}
+              </p>
               {step.copy && (
                 <div className="mt-1.5 flex items-center gap-2 rounded-md border border-dashed px-2 py-1">
                   <code className="min-w-0 flex-1 truncate text-[11px]">{step.copy}</code>
@@ -112,7 +119,15 @@ function StepList({ steps }: { steps: Step[] }) {
   );
 }
 
-function GuideShell({ done, total, children }: { done: number; total: number; children: ReactNode }) {
+function GuideShell({
+  done,
+  total,
+  children,
+}: {
+  done: number;
+  total: number;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3 rounded-lg border bg-muted/20">
@@ -127,7 +142,9 @@ function GuideShell({ done, total, children }: { done: number; total: number; ch
           · step {Math.min(done + 1, total)} of {total}
           {done === total ? " · complete" : ""}
         </span>
-        <ChevronDown className={`ml-auto size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown
+          className={`ml-auto size-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && <div className="border-t p-3">{children}</div>}
     </div>
@@ -140,12 +157,19 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
   const statusFn = useServerFn(getGoogleBusinessConnection);
   const startFn = useServerFn(startGoogleBusinessConnection);
   const syncFn = useServerFn(syncGoogleBusinessReviews);
-  const connection = useQuery({ queryKey: ["google_business_connection"], queryFn: () => statusFn() });
+  const connection = useQuery({
+    queryKey: ["google_business_connection"],
+    queryFn: () => statusFn(),
+  });
 
   const connect = useMutation({
     mutationFn: ({ authWindow }: { authWindow: Window | null }) =>
-      startFn({ data: { origin: window.location.origin } }).then((result) => ({ ...result, authWindow })),
-    onSuccess: ({ authorizationUrl, authWindow }) => openAuthorization(authorizationUrl, authWindow),
+      startFn({ data: { origin: window.location.origin } }).then((result) => ({
+        ...result,
+        authWindow,
+      })),
+    onSuccess: ({ authorizationUrl, authWindow }) =>
+      openAuthorization(authorizationUrl, authWindow),
     onError: (error: Error, { authWindow }) => {
       authWindow?.close();
       toast.error(error.message);
@@ -155,14 +179,18 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
   const sync = useMutation({
     mutationFn: () => syncFn(),
     onSuccess: (result) => {
-      toast.success(`Google synced: ${result.reviewsCreated} new, ${result.reviewsUpdated} updated`);
+      toast.success(
+        `Google synced: ${result.reviewsCreated} new, ${result.reviewsUpdated} updated`,
+      );
       void queryClient.invalidateQueries();
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const redirectUri =
-    typeof window === "undefined" ? "" : `${window.location.origin}/api/public/google-business/callback`;
+    typeof window === "undefined"
+      ? ""
+      : `${window.location.origin}/api/public/google-business/callback`;
   const configured = credentialsReady || Boolean(connection.data?.configured);
   const connected = Boolean(connection.data?.connected);
   const synced = Boolean(connection.data?.lastSyncedAt);
@@ -170,28 +198,44 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
   const steps: Step[] = [
     {
       title: "Create a Google Cloud project",
-      detail: "Sign in with the Google account that owns or manages the business listing, then create a project (any name).",
+      detail:
+        "Sign in with the Google account that owns or manages the business listing, then create a project (any name).",
       done: configured,
-      link: { href: "https://console.cloud.google.com/projectcreate", label: "Open project creation" },
+      link: {
+        href: "https://console.cloud.google.com/projectcreate",
+        label: "Open project creation",
+      },
     },
     {
       title: "Turn on the Business Profile API",
-      detail: "Press Enable on the My Business Account Management and Business Profile APIs. Google may ask for a short access request — approval usually takes a few days.",
+      detail:
+        "Press Enable on the My Business Account Management and Business Profile APIs. Google may ask for a short access request — approval usually takes a few days.",
       done: configured,
-      link: { href: "https://developers.google.com/my-business/content/prereqs", label: "Open access request steps" },
+      link: {
+        href: "https://developers.google.com/my-business/content/prereqs",
+        label: "Open access request steps",
+      },
     },
     {
       title: "Set up the consent screen",
-      detail: "Choose External, fill in the app name and support email, and publish it. Without publishing, only test users can connect.",
+      detail:
+        "Choose External, fill in the app name and support email, and publish it. Without publishing, only test users can connect.",
       done: configured,
-      link: { href: "https://console.cloud.google.com/apis/credentials/consent", label: "Open consent screen" },
+      link: {
+        href: "https://console.cloud.google.com/apis/credentials/consent",
+        label: "Open consent screen",
+      },
     },
     {
       title: "Create a web OAuth client and paste this address",
-      detail: "Credentials → Create credentials → OAuth client ID → Web application. Paste the address below into Authorized redirect URIs exactly as shown.",
+      detail:
+        "Credentials → Create credentials → OAuth client ID → Web application. Paste the address below into Authorized redirect URIs exactly as shown.",
       done: configured,
       copy: redirectUri,
-      link: { href: "https://console.cloud.google.com/apis/credentials", label: "Open credentials" },
+      link: {
+        href: "https://console.cloud.google.com/apis/credentials",
+        label: "Open credentials",
+      },
     },
     {
       title: "Save the Client ID and secret here",
@@ -210,7 +254,9 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
         <Button
           size="sm"
           disabled={!configured || connect.isPending}
-          onClick={() => connect.mutate({ authWindow: window.open("", "_blank", "noopener,noreferrer") })}
+          onClick={() =>
+            connect.mutate({ authWindow: window.open("", "_blank", "noopener,noreferrer") })
+          }
         >
           {connect.isPending && <Loader2 className="animate-spin" />}
           {connected ? "Reconnect Google" : "Connect Google"}
@@ -224,7 +270,12 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
         : "Pulls your real locations and reviews. After this, syncing continues automatically.",
       done: synced,
       action: (
-        <Button size="sm" variant="outline" disabled={!connected || sync.isPending} onClick={() => sync.mutate()}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!connected || sync.isPending}
+          onClick={() => sync.mutate()}
+        >
           {sync.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync now
         </Button>
       ),
@@ -250,16 +301,28 @@ export function GoogleBusinessSetupGuide({ credentialsReady }: { credentialsRead
 export function GoogleMapsSetupGuide({
   credentialsReady,
   verified,
+  placeId,
   onChanged,
 }: {
   credentialsReady: boolean;
   verified: boolean;
+  placeId: string | null;
   onChanged?: () => void;
 }) {
   const [apiKey, setApiKey] = useState("");
+  const [placeQuery, setPlaceQuery] = useState("");
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [placeCandidates, setPlaceCandidates] = useState<
+    Array<{ placeId: string; name: string; address: string }>
+  >([]);
+  const [searchingPlaces, setSearchingPlaces] = useState(false);
+  const [hasSearchedPlaces, setHasSearchedPlaces] = useState(false);
+  const [savingPlaceId, setSavingPlaceId] = useState<string | null>(null);
+  const [placeError, setPlaceError] = useState<string | null>(null);
   const saveFn = useServerFn(saveProviderCredentials);
   const testFn = useServerFn(testIntegration);
+  const searchFn = useServerFn(searchGooglePlacesForWorkspace);
+  const savePlaceFn = useServerFn(saveIntegrationAccount);
 
   const saveAndTest = useMutation({
     mutationFn: async (key: string) => {
@@ -290,30 +353,142 @@ export function GoogleMapsSetupGuide({
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const busy = saveAndTest.isPending || retest.isPending;
+  const busy =
+    saveAndTest.isPending || retest.isPending || searchingPlaces || savingPlaceId !== null;
+
+  const searchPlaces = async (query: string) => {
+    setPlaceError(null);
+    setPlaceCandidates([]);
+    setHasSearchedPlaces(false);
+    setSearchingPlaces(true);
+    try {
+      setPlaceCandidates(await searchFn({ data: { query } }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Google Places search failed.";
+      setPlaceError(message);
+      toast.error(message);
+    } finally {
+      setHasSearchedPlaces(true);
+      setSearchingPlaces(false);
+    }
+  };
+
+  const choosePlace = async (candidate: { placeId: string; name: string }) => {
+    setPlaceError(null);
+    setSavingPlaceId(candidate.placeId);
+    try {
+      await savePlaceFn({ data: { provider: "google_maps", accountRef: candidate.placeId } });
+      setPlaceCandidates([]);
+      toast.success(`${candidate.name} selected`);
+      onChanged?.();
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Could not save the selected Place ID.";
+      setPlaceError(message);
+      toast.error(message);
+    } finally {
+      setSavingPlaceId(null);
+    }
+  };
 
   const steps: Step[] = [
     {
       title: "Create a Google Cloud project with billing",
-      detail: "Maps needs billing switched on even for free monthly usage. Add a card once in Billing.",
-      done: credentialsReady,
+      detail:
+        "Places API usage requires billing to be enabled for the project that owns your API key.",
+      done: verified,
       link: { href: "https://console.cloud.google.com/billing", label: "Open billing" },
     },
     {
-      title: "Switch on Places API (New) and Geocoding API",
-      detail: "Search each API by name in the library and press Enable.",
-      done: credentialsReady,
+      title: "Enable Places API (New)",
+      detail:
+        "Enable Places API (New) on the same project that owns your server key. Public business search and review scans do not require Google Business Profile approval or OAuth.",
+      done: verified,
       link: { href: "https://console.cloud.google.com/apis/library", label: "Open API library" },
     },
     {
       title: "Create an API key for server use",
       detail:
-        "Credentials → Create credentials → API key. Under Application restrictions choose None or IP addresses (never website restrictions — this key is used by the server). Under API restrictions select only the two APIs above.",
-      done: credentialsReady,
-      link: { href: "https://console.cloud.google.com/apis/credentials", label: "Open credentials" },
+        "Create an API key for server use. Restrict it to the server's IP where practical and allow Places API (New); this public scan does not use Geocoding.",
+      done: verified,
+      link: {
+        href: "https://console.cloud.google.com/apis/credentials",
+        label: "Open credentials",
+      },
     },
     {
-      title: "Paste the key here and verify",
+      title: "Search and select your public Google listing",
+      detail: placeId
+        ? `Selected Place ID: ${placeId}. Public rating scans use this listing and do not need Business Profile OAuth.`
+        : "Search the business name with its city or address, then select the matching Google Maps result. Only its Place ID is saved.",
+      done: Boolean(placeId),
+      action: (
+        <div className="w-full space-y-2">
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void searchPlaces(placeQuery.trim());
+            }}
+          >
+            <input
+              value={placeQuery}
+              onChange={(event) => setPlaceQuery(event.target.value)}
+              placeholder="Business name and city/address"
+              maxLength={200}
+              className="h-9 min-w-[220px] flex-1 rounded-lg border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-ring/40"
+            />
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!credentialsReady || busy || placeQuery.trim().length < 3}
+            >
+              {searchingPlaces && <Loader2 className="animate-spin" />} Search Google Maps
+            </Button>
+          </form>
+          {placeCandidates.length > 0 && (
+            <>
+              <p className="text-xs text-muted-foreground">Business results from Google Maps</p>
+              <ul className="space-y-2">
+                {placeCandidates.map((candidate) => (
+                  <li
+                    key={candidate.placeId}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{candidate.name}</p>
+                      {candidate.address && (
+                        <p className="text-xs text-muted-foreground">{candidate.address}</p>
+                      )}
+                      <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+                        {candidate.placeId}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void choosePlace(candidate)}
+                    >
+                      {savingPlaceId === candidate.placeId && <Loader2 className="animate-spin" />}
+                      {placeId === candidate.placeId ? "Selected" : "Use this listing"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {!searchingPlaces && hasSearchedPlaces && placeCandidates.length === 0 && !placeError && (
+            <p className="text-xs text-muted-foreground">
+              Google Maps returned no matches. Try adding a city or street address.
+            </p>
+          )}
+          {placeError && <p className="text-xs text-negative">{placeError}</p>}
+        </div>
+      ),
+    },
+    {
+      title: "Save and verify the server key",
       detail: verified
         ? "Key saved and confirmed working against the live Google API."
         : credentialsReady
@@ -328,11 +503,17 @@ export function GoogleMapsSetupGuide({
               autoComplete="off"
               spellCheck={false}
               value={apiKey}
-              placeholder={credentialsReady ? "Enter a new key to replace the saved one" : "AIza..."}
+              placeholder={
+                credentialsReady ? "Enter a new key to replace the saved one" : "AIza..."
+              }
               onChange={(e) => setApiKey(e.target.value)}
               className="h-9 min-w-[220px] flex-1 rounded-lg border bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-ring/40"
             />
-            <Button size="sm" disabled={busy || !apiKey.trim()} onClick={() => saveAndTest.mutate(apiKey.trim())}>
+            <Button
+              size="sm"
+              disabled={busy || !apiKey.trim()}
+              onClick={() => saveAndTest.mutate(apiKey.trim())}
+            >
               {saveAndTest.isPending && <Loader2 className="animate-spin" />} Save &amp; verify
             </Button>
             {credentialsReady && (
@@ -342,7 +523,9 @@ export function GoogleMapsSetupGuide({
             )}
           </div>
           {result && (
-            <p className={`text-[11px] ${result.ok ? "text-positive" : "text-negative"}`}>{result.message}</p>
+            <p className={`text-[11px] ${result.ok ? "text-positive" : "text-negative"}`}>
+              {result.message}
+            </p>
           )}
           <p className="text-[11px] text-muted-foreground">
             The key never comes back to this page — only the live test result is shown.

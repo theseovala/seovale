@@ -3,6 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { assertReviewAiAllowed } from "@/lib/google-review-privacy";
 
 type Ctx = { supabase: any; userId: string };
 
@@ -35,7 +36,9 @@ async function memberFor(context: Ctx) {
 /** Scans reviews that have not been assessed yet and records removal cases. */
 export const scanReviewsForRemoval = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ limit: z.number().min(1).max(120).optional() }).parse(input ?? {}))
+  .inputValidator((input: unknown) =>
+    z.object({ limit: z.number().min(1).max(120).optional() }).parse(input ?? {}),
+  )
   .handler(async ({ data, context }) => {
     const workspaceId = await workspaceIdFor(context);
     const { runRemovalScan } = await import("@/lib/removal-scan.server");
@@ -95,7 +98,8 @@ export const updateScanSchedule = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const member = await memberFor(context);
-    if (member.role === "member") throw new Error("Only a workspace owner or admin can change the scan schedule.");
+    if (member.role === "member")
+      throw new Error("Only a workspace owner or admin can change the scan schedule.");
 
     const patch: Record<string, unknown> = {};
     if (data.enabled !== undefined) patch["enabled"] = data.enabled;
@@ -105,7 +109,6 @@ export const updateScanSchedule = createServerFn({ method: "POST" })
     }
     if (data.batchSize !== undefined) patch["batch_size"] = data.batchSize;
     if (data.resume) patch["paused_reason"] = null;
-
 
     const { data: updated, error } = await context.supabase
       .from("removal_scan_settings")
@@ -121,7 +124,6 @@ export const updateScanSchedule = createServerFn({ method: "POST" })
       pausedReason: updated.paused_reason as string | null,
     };
   });
-
 
 /** Moves a removal case through its lifecycle. */
 export const updateRemovalCase = createServerFn({ method: "POST" })
@@ -139,7 +141,8 @@ export const updateRemovalCase = createServerFn({ method: "POST" })
     const now = new Date().toISOString();
 
     const { row, evidence, ledger } = await caseLedger(context, workspaceId, data.id);
-    const { CASE_STATUSES, assertTransition, appendEntry } = await import("@/lib/removal/lifecycle");
+    const { CASE_STATUSES, assertTransition, appendEntry } =
+      await import("@/lib/removal/lifecycle");
 
     // Only guard transitions between statuses the state machine knows about, so
     // a row written before this existed can still be moved.
@@ -169,7 +172,10 @@ export const updateRemovalCase = createServerFn({ method: "POST" })
       at: now,
       actor: { kind: "user", id: context.userId },
       observation: `A workspace member set the case status to "${data.status}".`,
-      source: { type: "user_assertion", detail: "Status changed from the removals screen; not a provider confirmation." },
+      source: {
+        type: "user_assertion",
+        detail: "Status changed from the removals screen; not a provider confirmation.",
+      },
     });
     const committed = await commitLedger(context, workspaceId, data.id, evidence, next);
 
@@ -180,7 +186,7 @@ async function caseWithReview(context: Ctx, workspaceId: string, caseId: string)
   const { data, error } = await context.supabase
     .from("removal_cases")
     .select(
-      "id, review_id, violation_type, rationale, appeal_text, reviews(author, rating, body, platform, location_name, external_id)",
+      "id, review_id, violation_type, rationale, appeal_text, reviews(author, rating, body, platform, source, location_name, external_id)",
     )
     .eq("id", caseId)
     .eq("workspace_id", workspaceId)
@@ -198,6 +204,7 @@ export const draftRemovalReply = createServerFn({ method: "POST" })
     const workspaceId = await workspaceIdFor(context);
     const row = await caseWithReview(context, workspaceId, data.caseId);
     const review = row.reviews;
+    assertReviewAiAllowed(review);
 
     const { data: brand } = await context.supabase
       .from("brand_settings")
@@ -245,7 +252,11 @@ export const publishRemovalReply = createServerFn({ method: "POST" })
     const review = row.reviews;
     let postedToGoogle = false;
 
-    if (review.platform === "google" && typeof review.external_id === "string" && review.external_id.startsWith("gbp:")) {
+    if (
+      review.platform === "google" &&
+      typeof review.external_id === "string" &&
+      review.external_id.startsWith("gbp:")
+    ) {
       const { data: connection, error: connectionError } = await context.supabase
         .from("google_business_connections")
         .select("access_token_ciphertext,refresh_token_ciphertext,token_expires_at,status")
@@ -256,7 +267,8 @@ export const publishRemovalReply = createServerFn({ method: "POST" })
         throw new Error("Connect Google Business Profile before sending a reply to Google.");
       }
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { usableAccessToken, postGoogleReviewReply } = await import("./google-business-sync.server");
+      const { usableAccessToken, postGoogleReviewReply } =
+        await import("./google-business-sync.server");
       const token = await usableAccessToken(supabaseAdmin, workspaceId, connection);
       await postGoogleReviewReply(token, review.external_id, data.reply);
       postedToGoogle = true;
@@ -351,7 +363,8 @@ export const getRemovalCaseDetail = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     const workspaceId = await workspaceIdFor(context);
     const { row, evidence, ledger } = await caseLedger(context, workspaceId, data.caseId);
-    const { phaseProgress, providerDecision, resolveOutcome, nextRecheckDue } = await import("@/lib/removal/lifecycle");
+    const { phaseProgress, providerDecision, resolveOutcome, nextRecheckDue } =
+      await import("@/lib/removal/lifecycle");
     const resolved = resolveOutcome(ledger as never);
     return {
       id: row.id,
@@ -396,7 +409,9 @@ export const recordSubmission = createServerFn({ method: "POST" })
     const { appendEntry, assertTransition } = await import("@/lib/removal/lifecycle");
     const { ROUTES } = await import("@/lib/removal/routes");
     if (!(ROUTES as readonly string[]).includes(data.route)) {
-      throw new Error(`"${data.route}" is not one of the legitimate routes this system recognises.`);
+      throw new Error(
+        `"${data.route}" is not one of the legitimate routes this system recognises.`,
+      );
     }
     if (row.status !== "submitted") assertTransition(row.status, "submitted");
 
@@ -410,7 +425,14 @@ export const recordSubmission = createServerFn({ method: "POST" })
         detail: `route=${data.route}; channel=${data.channel}${data.reference ? `; provider reference=${data.reference}` : ""}`,
       },
     });
-    const result = await commitLedger(context, workspaceId, data.caseId, evidence, next, "submitted");
+    const result = await commitLedger(
+      context,
+      workspaceId,
+      data.caseId,
+      evidence,
+      next,
+      "submitted",
+    );
     return { ...result, phase: "SUBMISSION" as const };
   });
 
@@ -515,5 +537,10 @@ export const recordRecheckResult = createServerFn({ method: "POST" })
     }
 
     const result = await commitLedger(context, workspaceId, data.caseId, evidence, next, status);
-    return { ...result, phase: "RECHECK" as const, basis: resolved.basis, statusChangedTo: status ?? null };
+    return {
+      ...result,
+      phase: "RECHECK" as const,
+      basis: resolved.basis,
+      statusChangedTo: status ?? null,
+    };
   });

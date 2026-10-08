@@ -67,11 +67,15 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
           const secret = process.env["FACEBOOK_APP_SECRET"];
           const header = request.headers.get("x-hub-signature-256") ?? "";
           if (!secret) verifyError = "No Meta app secret configured for signature verification.";
-          else if (!header.startsWith("sha256=")) verifyError = "Missing x-hub-signature-256 header.";
+          else if (!header.startsWith("sha256="))
+            verifyError = "Missing x-hub-signature-256 header.";
           else {
             const expected = createHmac("sha256", secret).update(raw).digest("hex");
             try {
-              signatureValid = timingSafeEqual(Buffer.from(header.slice(7), "hex"), Buffer.from(expected, "hex"));
+              signatureValid = timingSafeEqual(
+                Buffer.from(header.slice(7), "hex"),
+                Buffer.from(expected, "hex"),
+              );
             } catch {
               signatureValid = false;
             }
@@ -145,7 +149,9 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
             void resourceRef;
           }
         } else if (provider === "twitter") {
-          providerEventId = payload["for_user_id"] ? `${payload["for_user_id"]}:${payload["id"] ?? Date.now()}` : null;
+          providerEventId = payload["for_user_id"]
+            ? `${payload["for_user_id"]}:${payload["id"] ?? Date.now()}`
+            : null;
           eventType = String(payload["tweet_create_events"] ? "tweet_create" : "event");
           const { data: conn } = await supabaseAdmin
             .from("integration_connections")
@@ -181,14 +187,18 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         if (!workspaceId) {
           await supabaseAdmin
             .from("integration_webhook_events")
-            .update({ status: "rejected", error_message: "No connected workspace matched this event's account." })
+            .update({
+              status: "rejected",
+              error_message: "No connected workspace matched this event's account.",
+            })
             .eq("id", event.id);
           return Response.json({ ok: true, unmatched: true });
         }
 
         // Queue durable processing with retry/backoff, then attempt it inline
         // so delivery is immediate; the hourly runner only picks up retries.
-        const { enqueueJob, completeJob, failJob } = await import("@/lib/jobs.server");
+        const { enqueueJob, claimPendingJob, completeJob, failJob } =
+          await import("@/lib/jobs.server");
         const { enqueued, id } = await enqueueJob(supabaseAdmin, {
           workspaceId,
           provider,
@@ -198,15 +208,26 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
           priority: 3,
         });
         if (enqueued && id) {
-          await supabaseAdmin.from("integration_webhook_events").update({ status: "processing" }).eq("id", event.id);
+          const job = await claimPendingJob(supabaseAdmin, id);
+          if (!job) return Response.json({ ok: true, queued_for_retry: true });
           try {
-            await supabaseAdmin
+            const { error: processingError } = await supabaseAdmin
+              .from("integration_webhook_events")
+              .update({ status: "processing" })
+              .eq("id", event.id);
+            if (processingError) throw processingError;
+            const { error: processedError } = await supabaseAdmin
               .from("integration_webhook_events")
               .update({ status: "processed", processed_at: new Date().toISOString() })
               .eq("id", event.id);
-            await completeJob(supabaseAdmin, id);
+            if (processedError) throw processedError;
+            await completeJob(supabaseAdmin, job);
           } catch (caught) {
-            await failJob(supabaseAdmin, { id, attempts: 1, max_attempts: 5 }, caught instanceof Error ? caught.message : String(caught));
+            await failJob(
+              supabaseAdmin,
+              job,
+              caught instanceof Error ? caught.message : String(caught),
+            );
             return Response.json({ ok: true, queued_for_retry: true });
           }
         }

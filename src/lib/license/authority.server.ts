@@ -109,7 +109,7 @@ export async function rateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
-): Promise<{ allowed: boolean; count: number; retryAfterSeconds: number }> {
+): Promise<{ allowed: boolean; count: number; retryAfterSeconds: number; error?: string }> {
   const windowMs = windowSeconds * 1000;
   const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs).toISOString();
   const keyHash = hashToken(`${bucket}:${key}`);
@@ -126,7 +126,12 @@ export async function rateLimit(
   if (error || typeof count !== "number") {
     // The counter could not be advanced, so this request cannot be proven to be
     // within the limit. Refuse rather than allow an unmetered request through.
-    return { allowed: false, count: limit + 1, retryAfterSeconds };
+    return {
+      allowed: false,
+      count: limit + 1,
+      retryAfterSeconds,
+      error: error?.message ?? "Rate limit storage returned an invalid counter.",
+    };
   }
   return { allowed: count <= limit, count, retryAfterSeconds };
 }

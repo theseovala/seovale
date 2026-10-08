@@ -14,7 +14,8 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
         if (expected) {
           const token = auth.replace(/^Bearer\s+/i, "");
           const ok =
-            (token.length === expected.length && timingSafeEqual(Buffer.from(token), Buffer.from(expected))) ||
+            (token.length === expected.length &&
+              timingSafeEqual(Buffer.from(token), Buffer.from(expected))) ||
             (await (async () => {
               const { data } = await supabaseAdmin
                 .from("scheduler_tokens")
@@ -32,22 +33,29 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
         const claimed = await claimDueJobs(supabaseAdmin, 25);
         let processed = 0;
         let failed = 0;
-        for (const job of claimed as any[]) {
+        for (const job of claimed) {
           try {
             if (job.job_type === "process_webhook_event") {
-              const eventId = job.payload?.["webhook_event_id"];
-              const { data: event } = await supabaseAdmin
+              const eventId =
+                job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+                  ? job.payload["webhook_event_id"]
+                  : null;
+              if (typeof eventId !== "string") throw new Error("Webhook job has no event ID.");
+              const { data: event, error: eventError } = await supabaseAdmin
                 .from("integration_webhook_events")
                 .select("id,provider,event_type,payload")
                 .eq("id", eventId)
+                .eq("workspace_id", job.workspace_id)
                 .maybeSingle();
-              if (event) {
-                await supabaseAdmin
-                  .from("integration_webhook_events")
-                  .update({ status: "processed", processed_at: new Date().toISOString() })
-                  .eq("id", event.id);
-              }
-              await completeJob(supabaseAdmin, job.id);
+              if (eventError) throw eventError;
+              if (!event) throw new Error("Webhook event was not found in the job workspace.");
+              const { error: updateError } = await supabaseAdmin
+                .from("integration_webhook_events")
+                .update({ status: "processed", processed_at: new Date().toISOString() })
+                .eq("id", event.id)
+                .eq("workspace_id", job.workspace_id);
+              if (updateError) throw updateError;
+              await completeJob(supabaseAdmin, job);
               processed += 1;
             } else {
               // Unknown job types are marked failed, never silently dropped.
@@ -55,7 +63,11 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
               failed += 1;
             }
           } catch (caught) {
-            await failJob(supabaseAdmin, job, caught instanceof Error ? caught.message : String(caught));
+            await failJob(
+              supabaseAdmin,
+              job,
+              caught instanceof Error ? caught.message : String(caught),
+            );
             failed += 1;
           }
         }
@@ -75,7 +87,11 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
           if ((scan.attempts ?? 0) >= (scan.max_attempts ?? 3)) {
             await supabaseAdmin
               .from("scans")
-              .update({ status: "failed", error_message: "Scan stopped after the maximum number of attempts.", completed_at: new Date().toISOString() })
+              .update({
+                status: "failed",
+                error_message: "Scan stopped after the maximum number of attempts.",
+                completed_at: new Date().toISOString(),
+              })
               .eq("id", scan.id);
             continue;
           }
@@ -86,12 +102,25 @@ export const Route = createFileRoute("/api/public/integrations/jobs-run")({
           } catch (caught) {
             await supabaseAdmin
               .from("scans")
-              .update({ status: "failed", error_message: (caught instanceof Error ? caught.message : String(caught)).slice(0, 500), completed_at: new Date().toISOString() })
+              .update({
+                status: "failed",
+                error_message: (caught instanceof Error ? caught.message : String(caught)).slice(
+                  0,
+                  500,
+                ),
+                completed_at: new Date().toISOString(),
+              })
               .eq("id", scan.id);
           }
         }
 
-        return Response.json({ ok: true, claimed: claimed.length, processed, failed, scansResumed });
+        return Response.json({
+          ok: true,
+          claimed: claimed.length,
+          processed,
+          failed,
+          scansResumed,
+        });
       },
     },
   },
