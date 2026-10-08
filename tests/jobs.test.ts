@@ -122,6 +122,70 @@ describe("durable job ownership", () => {
     await expect(completeJob(fixtureDatabase(job), { ...job })).rejects.toThrow("no longer owns");
   });
 
+  test("reclaims abandoned work without allowing its old worker to finalize it", async () => {
+    const job = fixtureJob();
+    const db = fixtureDatabase(job);
+    const firstAttempt = await claimPendingJob(db, job.id);
+    if (!firstAttempt) throw new Error("Fixture was not claimed");
+    const startedAt = job.started_at;
+    job.lease_expires_at = new Date(Date.now() - 1000).toISOString();
+    const claimed = await claimDueJobs(db, 25);
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.attempts).toBe(2);
+    expect(claimed[0]?.started_at).toBe(startedAt);
+    expect(Date.parse(claimed[0]?.lease_expires_at ?? "")).toBeGreaterThan(Date.now());
+    await expect(completeJob(db, firstAttempt)).rejects.toThrow("no longer owns");
+    await expect(failJob(db, firstAttempt, "Late provider failure")).rejects.toThrow(
+      "no longer owns",
+    );
+    if (!claimed[0]) throw new Error("Fixture was not reclaimed");
+    await completeJob(db, claimed[0]);
+    expect(job.status).toBe("completed");
+  });
+
+  test("dead-letters an expired final attempt instead of reclaiming indefinitely", async () => {
+    const job = fixtureJob();
+    job.status = "processing";
+    job.attempts = job.max_attempts;
+    job.lease_expires_at = new Date(Date.now() - 1000).toISOString();
+    const db = fixtureDatabase(job);
+    expect(await claimDueJobs(db, 25)).toHaveLength(0);
+    expect(job.status).toBe("failed");
+    expect(job.attempts).toBe(job.max_attempts);
+    expect(job.lease_expires_at).toBeNull();
+    expect(job.completed_at).toBeTruthy();
+    expect(job.last_error).toBe("Job lease expired after the maximum number of attempts.");
+  });
+
+  test("does not dead-letter an active final attempt", async () => {
+    const job = fixtureJob();
+    job.status = "processing";
+    job.attempts = job.max_attempts;
+    job.lease_expires_at = new Date(Date.now() + 60000).toISOString();
+    const db = fixtureDatabase(job);
+    expect(await claimDueJobs(db, 25)).toHaveLength(0);
+    expect(await claimPendingJob(db, job.id)).toBeNull();
+    expect(job.status).toBe("processing");
+    expect(job.last_error).toBeNull();
+  });
+
+  test("does not start pending work that already exhausted its attempt budget", async () => {
+    const job = fixtureJob();
+    job.attempts = job.max_attempts;
+    expect(await claimPendingJob(fixtureDatabase(job), job.id)).toBeNull();
+    expect(job.status).toBe("failed");
+    expect(job.last_error).toBe("Job stopped after the maximum number of attempts.");
+  });
+
+  test("never reclaims a completed job", async () => {
+    const job = fixtureJob();
+    job.status = "completed";
+    const db = fixtureDatabase(job);
+    expect(await claimDueJobs(db, 25)).toHaveLength(0);
+    expect(await claimPendingJob(db, job.id)).toBeNull();
+    expect(job.status).toBe("completed");
+  });
+
   test("retry updates require the worker's current lease", async () => {
     const job = fixtureJob();
     const db = fixtureDatabase(job);

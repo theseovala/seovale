@@ -46,13 +46,13 @@ export async function enqueueJob(
   return { enqueued: true, id: data?.id ?? null };
 }
 
-/** Claims due jobs by leasing them (single-flight friendly; cron callers are one at a time). */
+/** Claims due or abandoned jobs using attempt-checked leases. */
 export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMinutes = 5) {
   const now = new Date().toISOString();
   const { data: due, error } = await admin
     .from("integration_sync_jobs")
     .select("*")
-    .in("status", ["pending", "retrying"])
+    .in("status", ["pending", "retrying", "processing"])
     .lte("next_attempt_at", now)
     .or(`lease_expires_at.is.null,lease_expires_at.lt.${now}`)
     .order("priority", { ascending: true })
@@ -70,24 +70,38 @@ export async function claimDueJobs(admin: SupabaseClient, limit: number, leaseMi
 
 async function claimJob(admin: SupabaseClient, job: IntegrationJob, leaseMinutes: number) {
   const now = new Date().toISOString();
+  const exhausted = job.attempts >= job.max_attempts;
+  const update: Database["public"]["Tables"]["integration_sync_jobs"]["Update"] = exhausted
+    ? {
+        status: "failed",
+        lease_expires_at: null,
+        completed_at: now,
+        updated_at: now,
+        last_error:
+          job.status === "processing"
+            ? "Job lease expired after the maximum number of attempts."
+            : "Job stopped after the maximum number of attempts.",
+      }
+    : {
+        status: "processing",
+        lease_expires_at: new Date(Date.now() + leaseMinutes * 60_000).toISOString(),
+        started_at: job.started_at ?? now,
+        attempts: job.attempts + 1,
+        updated_at: now,
+      };
   const { data, error } = await admin
     .from("integration_sync_jobs")
-    .update({
-      status: "processing" as JobStatus,
-      lease_expires_at: new Date(Date.now() + leaseMinutes * 60_000).toISOString(),
-      started_at: job.started_at ?? now,
-      attempts: job.attempts + 1,
-      updated_at: now,
-    })
+    .update(update)
     .eq("id", job.id)
     .eq("attempts", job.attempts)
-    .in("status", ["pending", "retrying"])
+    .eq("status", job.status)
+    .in("status", ["pending", "retrying", "processing"])
     .lte("next_attempt_at", now)
     .or(`lease_expires_at.is.null,lease_expires_at.lt.${now}`)
     .select()
     .maybeSingle();
   if (error) throw error;
-  return data as IntegrationJob | null;
+  return exhausted ? null : (data as IntegrationJob | null);
 }
 
 export async function claimPendingJob(admin: SupabaseClient, jobId: string) {

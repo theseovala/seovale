@@ -44,6 +44,13 @@ reputation-report AI prompts, and manual/scheduled AI removal scans.
 Run `bun test` and `bun x tsc --noEmit`. Unit fixtures are not proof of live
 production access. Use `NITRO_PRESET=node-server bun run build` on the VPS.
 
+## Integration job recovery
+
+Workers finalize only their current, unexpired lease and attempt. Due jobs with
+expired processing leases can be reclaimed; exhausted attempts are marked failed
+with an explicit error instead of being retried indefinitely. Active leases and
+completed or cancelled jobs are not reclaimed.
+
 ## Safe VPS releases
 
 [scripts/deploy-vps.sh](scripts/deploy-vps.sh) stages a full commit in an isolated
