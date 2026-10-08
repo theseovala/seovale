@@ -26,24 +26,30 @@ export const REPORT_CATEGORIES = [
 
 const AnalysisSchema = z.object({
   executiveSummary: z.string().min(20),
-  condition: z.enum(["healthy", "needs_attention", "critical", "insufficient_evidence"]).default("insufficient_evidence"),
-  categories: z.array(
-    z.object({
-      category: z.enum(REPORT_CATEGORIES),
-      verdict: z.enum(["good", "mixed", "poor", "data_not_available", "insufficient_evidence"]),
-      note: z.string(),
-      findingCodes: z.array(z.string()).default([]),
-    }),
-  ).default([]),
-  actionPlan: z.array(
-    z.object({
-      findingCode: z.string(),
-      problem: z.string(),
-      impact: z.string(),
-      action: z.string(),
-      expectedObjective: z.string(),
-    }),
-  ).default([]),
+  condition: z
+    .enum(["healthy", "needs_attention", "critical", "insufficient_evidence"])
+    .default("insufficient_evidence"),
+  categories: z
+    .array(
+      z.object({
+        category: z.enum(REPORT_CATEGORIES),
+        verdict: z.enum(["good", "mixed", "poor", "data_not_available", "insufficient_evidence"]),
+        note: z.string(),
+        findingCodes: z.array(z.string()).default([]),
+      }),
+    )
+    .default([]),
+  actionPlan: z
+    .array(
+      z.object({
+        findingCode: z.string(),
+        problem: z.string(),
+        impact: z.string(),
+        action: z.string(),
+        expectedObjective: z.string(),
+      }),
+    )
+    .default([]),
   crossSourceNotes: z.array(z.object({ findingCode: z.string(), note: z.string() })).default([]),
   historical: z
     .object({
@@ -56,6 +62,12 @@ const AnalysisSchema = z.object({
 });
 
 export type ScanAiAnalysis = z.infer<typeof AnalysisSchema>;
+export type ActionPlanItem = ScanAiAnalysis["actionPlan"][number];
+
+export function parseActionPlan(value: unknown): ActionPlanItem[] {
+  const parsed = AnalysisSchema.shape.actionPlan.safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
 
 const SYSTEM_PROMPT = [
   "You are a technical SEO and online-reputation analyst.",
@@ -87,7 +99,9 @@ function validateAgainstContext(context: ScanAiContext) {
       );
     }
     if (!context.history && parsed.historical) {
-      throw new AiValidationError("There is no previous scan in the context, so 'historical' must be null.");
+      throw new AiValidationError(
+        "There is no previous scan in the context, so 'historical' must be null.",
+      );
     }
     return parsed;
   };
@@ -149,7 +163,11 @@ export async function analyseWithAi(
   }
 
   try {
-    const result = await runAiJson(SYSTEM_PROMPT, JSON.stringify(context), validateAgainstContext(context));
+    const result = await runAiJson(
+      SYSTEM_PROMPT,
+      JSON.stringify(context),
+      validateAgainstContext(context),
+    );
     const serialised = JSON.stringify(result.value);
     await admin.from("ai_runs").insert({
       workspace_id: workspaceId,

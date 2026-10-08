@@ -18,7 +18,11 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Section } from "@/components/app/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getSupportSettings, saveSupportSettings, type SupportSettings } from "@/lib/support.functions";
+import {
+  getSupportSettings,
+  saveSupportSettings,
+  type SupportSettings,
+} from "@/lib/support.functions";
 
 export const Route = createFileRoute("/_authenticated/support")({
   head: () => ({
@@ -145,7 +149,9 @@ function ContactChannels() {
   };
 
   const channels = [
-    data?.phone ? { icon: Phone, label: "Call", value: data.phone, href: `tel:${data.phone}` } : null,
+    data?.phone
+      ? { icon: Phone, label: "Call", value: data.phone, href: `tel:${data.phone}` }
+      : null,
     data?.whatsapp
       ? {
           icon: MessageCircle,
@@ -156,7 +162,9 @@ function ContactChannels() {
           }`,
         }
       : null,
-    data?.email ? { icon: Mail, label: "Email", value: data.email, href: `mailto:${data.email}` } : null,
+    data?.email
+      ? { icon: Mail, label: "Email", value: data.email, href: `mailto:${data.email}` }
+      : null,
     data?.helpUrl
       ? { icon: BookOpen, label: "Help centre", value: data.helpUrl, href: data.helpUrl }
       : null,
@@ -243,8 +251,8 @@ function ContactChannels() {
             <LifeBuoy className="size-4" />
           </span>
           <p className="text-sm text-muted-foreground">
-            No support phone, WhatsApp or inbox has been saved yet. Add the real details and they appear
-            here as working call, chat and email buttons.
+            No support phone, WhatsApp or inbox has been saved yet. Add the real details and they
+            appear here as working call, chat and email buttons.
           </p>
         </div>
       )}

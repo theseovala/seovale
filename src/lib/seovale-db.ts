@@ -311,7 +311,12 @@ export function useBrandSettings() {
     queryKey: ["brand_settings"],
     queryFn: async (): Promise<BrandSettings | null> => {
       const workspaceId = await currentWorkspaceId();
-      const { data, error } = await supabase.from("brand_settings").select("*").eq("workspace_id", workspaceId).limit(1).maybeSingle();
+      const { data, error } = await supabase
+        .from("brand_settings")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .limit(1)
+        .maybeSingle();
       if (error) throw error;
       return data as BrandSettings | null;
     },
@@ -323,7 +328,11 @@ export function useUpdateBrandSettings() {
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<BrandSettings> }) => {
       const workspaceId = await currentWorkspaceId();
-      const { error } = await supabase.from("brand_settings").update(patch).eq("id", id).eq("workspace_id", workspaceId);
+      const { error } = await supabase
+        .from("brand_settings")
+        .update(patch)
+        .eq("id", id)
+        .eq("workspace_id", workspaceId);
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["brand_settings"] }),
@@ -368,7 +377,12 @@ export function useProfile() {
         .eq("id", auth.user.id)
         .maybeSingle();
       if (error) throw error;
-      return (data ?? { id: auth.user.id, email: auth.user.email, full_name: null, job_title: null }) as {
+      return (data ?? {
+        id: auth.user.id,
+        email: auth.user.email,
+        full_name: null,
+        job_title: null,
+      }) as {
         id: string;
         email: string | null;
         full_name: string | null;
@@ -430,7 +444,11 @@ export function useUpdateReview() {
       patch: Partial<{ status: string; priority: string; unread: boolean }>;
     }) => {
       const workspaceId = await currentWorkspaceId();
-      const { error } = await supabase.from("reviews").update(patch).eq("id", id).eq("workspace_id", workspaceId);
+      const { error } = await supabase
+        .from("reviews")
+        .update(patch)
+        .eq("id", id)
+        .eq("workspace_id", workspaceId);
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["reviews"] }),
@@ -442,7 +460,11 @@ export function useResolveAlert() {
   return useMutation({
     mutationFn: async ({ id, resolved }: { id: string; resolved: boolean }) => {
       const workspaceId = await currentWorkspaceId();
-      const { error } = await supabase.from("alerts").update({ resolved }).eq("id", id).eq("workspace_id", workspaceId);
+      const { error } = await supabase
+        .from("alerts")
+        .update({ resolved })
+        .eq("id", id)
+        .eq("workspace_id", workspaceId);
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["alerts"] }),
@@ -486,7 +508,11 @@ export function useUpdateAlertRules() {
   return useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<AlertRulesRow> }) => {
       const workspaceId = await currentWorkspaceId();
-      const { error } = await supabase.from("alert_rules").update(patch).eq("id", id).eq("workspace_id", workspaceId);
+      const { error } = await supabase
+        .from("alert_rules")
+        .update(patch)
+        .eq("id", id)
+        .eq("workspace_id", workspaceId);
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["alert_rules"] }),

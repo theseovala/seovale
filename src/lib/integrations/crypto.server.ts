@@ -2,7 +2,8 @@ import { createHash, randomBytes, webcrypto } from "node:crypto";
 
 function encryptionSecret() {
   const value =
-    process.env["INTEGRATION_TOKEN_ENCRYPTION_KEY"] ?? process.env["GOOGLE_BUSINESS_TOKEN_ENCRYPTION_KEY"];
+    process.env["INTEGRATION_TOKEN_ENCRYPTION_KEY"] ??
+    process.env["GOOGLE_BUSINESS_TOKEN_ENCRYPTION_KEY"];
   if (!value) throw new Error("INTEGRATION_TOKEN_ENCRYPTION_KEY is not configured.");
   return value;
 }
@@ -16,7 +17,11 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 
 export async function encryptValue(value: string) {
   const iv = randomBytes(12);
-  const encrypted = await webcrypto.subtle.encrypt({ name: "AES-GCM", iv }, await key(), new TextEncoder().encode(value));
+  const encrypted = await webcrypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    await key(),
+    new TextEncoder().encode(value),
+  );
   return `${b64(iv)}.${b64(new Uint8Array(encrypted))}`;
 }
 

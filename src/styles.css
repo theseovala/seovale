@@ -267,9 +267,7 @@
   background-color: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  box-shadow:
-    var(--shadow-inset-top),
-    var(--shadow-card);
+  box-shadow: var(--shadow-inset-top), var(--shadow-card);
   transition:
     box-shadow 0.25s ease,
     transform 0.25s ease,
@@ -278,8 +276,16 @@
 /* Layered depth system: L1 background → L2 surface → L3 card → L4 elevated → L5 interactive */
 @utility bg-ambient {
   background-image:
-    radial-gradient(1100px 480px at 12% -6%, color-mix(in oklab, var(--primary) 7%, transparent), transparent 62%),
-    radial-gradient(900px 420px at 96% -2%, color-mix(in oklab, var(--primary-glow) 5%, transparent), transparent 58%);
+    radial-gradient(
+      1100px 480px at 12% -6%,
+      color-mix(in oklab, var(--primary) 7%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      900px 420px at 96% -2%,
+      color-mix(in oklab, var(--primary-glow) 5%, transparent),
+      transparent 58%
+    );
   background-attachment: fixed;
 }
 @utility edge-illuminate {
@@ -395,7 +401,9 @@
   overflow: visible;
   background: transparent;
   box-shadow: none;
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 180ms ease;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 180ms ease;
 }
 .brand-coin-button:hover:not(:disabled) {
   background: transparent;
@@ -452,35 +460,73 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary-foreground) 25%, transparent);
 }
 @keyframes brand-coin-spin {
-  0% { transform: rotateY(0deg); }
-  46% { transform: rotateY(166deg); }
-  54% { transform: rotateY(194deg); }
-  100% { transform: rotateY(360deg); }
+  0% {
+    transform: rotateY(0deg);
+  }
+  46% {
+    transform: rotateY(166deg);
+  }
+  54% {
+    transform: rotateY(194deg);
+  }
+  100% {
+    transform: rotateY(360deg);
+  }
 }
 @media (min-width: 390px) {
-  .brand-coin-button { --brand-coin-size: 40px; }
-  .brand-coin-sm { --brand-coin-size: 36px; }
-  .brand-coin-lg { --brand-coin-size: 50px; }
+  .brand-coin-button {
+    --brand-coin-size: 40px;
+  }
+  .brand-coin-sm {
+    --brand-coin-size: 36px;
+  }
+  .brand-coin-lg {
+    --brand-coin-size: 50px;
+  }
 }
 @media (min-width: 768px) {
-  .brand-coin-button { --brand-coin-size: 46px; }
-  .brand-coin-sm { --brand-coin-size: 40px; }
-  .brand-coin-lg { --brand-coin-size: 54px; }
+  .brand-coin-button {
+    --brand-coin-size: 46px;
+  }
+  .brand-coin-sm {
+    --brand-coin-size: 40px;
+  }
+  .brand-coin-lg {
+    --brand-coin-size: 54px;
+  }
 }
 @media (min-width: 1024px) {
-  .brand-coin-button { --brand-coin-size: 48px; }
-  .brand-coin-sm { --brand-coin-size: 42px; }
-  .brand-coin-lg { --brand-coin-size: 56px; }
+  .brand-coin-button {
+    --brand-coin-size: 48px;
+  }
+  .brand-coin-sm {
+    --brand-coin-size: 42px;
+  }
+  .brand-coin-lg {
+    --brand-coin-size: 56px;
+  }
 }
 @media (min-width: 1440px) {
-  .brand-coin-button { --brand-coin-size: 54px; }
-  .brand-coin-sm { --brand-coin-size: 46px; }
-  .brand-coin-lg { --brand-coin-size: 60px; }
+  .brand-coin-button {
+    --brand-coin-size: 54px;
+  }
+  .brand-coin-sm {
+    --brand-coin-size: 46px;
+  }
+  .brand-coin-lg {
+    --brand-coin-size: 60px;
+  }
 }
 @media (min-width: 1920px) {
-  .brand-coin-button { --brand-coin-size: 58px; }
-  .brand-coin-sm { --brand-coin-size: 48px; }
-  .brand-coin-lg { --brand-coin-size: 64px; }
+  .brand-coin-button {
+    --brand-coin-size: 58px;
+  }
+  .brand-coin-sm {
+    --brand-coin-size: 48px;
+  }
+  .brand-coin-lg {
+    --brand-coin-size: 64px;
+  }
 }
 
 @layer base {

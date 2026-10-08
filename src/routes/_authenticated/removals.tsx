@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ShieldX, ScanEye, RefreshCw, Send, CheckCircle2, XCircle, Ban, Sparkles } from "lucide-react";
+import {
+  ShieldX,
+  ScanEye,
+  RefreshCw,
+  Send,
+  CheckCircle2,
+  XCircle,
+  Ban,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader, Section, StatCard, EmptyState, Stars } from "@/components/app/primitives";
@@ -28,7 +37,6 @@ import {
 } from "@/lib/removal.functions";
 import { cn } from "@/lib/utils";
 
-
 function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () => void }) {
   const [reply, setReply] = useState("");
   const draft = useServerFn(draftRemovalReply);
@@ -49,7 +57,9 @@ function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () 
     onSuccess: (result: { postedToGoogle: boolean }) => {
       onPublished();
       toast.success(
-        result.postedToGoogle ? "Reply published on Google" : "Reply saved — publish it on the platform",
+        result.postedToGoogle
+          ? "Reply published on Google"
+          : "Reply saved — publish it on the platform",
       );
     },
     onError: (error: unknown) =>
@@ -60,7 +70,12 @@ function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () 
     <div className="mt-3 rounded-lg border bg-muted/30 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold">Public reply while the appeal is pending</span>
-        <Button size="sm" variant="outline" onClick={() => write.mutate()} disabled={write.isPending}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => write.mutate()}
+          disabled={write.isPending}
+        >
           {write.isPending ? <RefreshCw className="animate-spin" /> : <Sparkles />}
           {write.isPending ? "Writing…" : reply ? "Rewrite" : "Draft reply"}
         </Button>
@@ -73,7 +88,11 @@ function AppealReply({ caseId, onPublished }: { caseId: string; onPublished: () 
             onChange={(event) => setReply(event.target.value)}
           />
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => send.mutate()} disabled={send.isPending || reply.trim().length < 5}>
+            <Button
+              size="sm"
+              onClick={() => send.mutate()}
+              disabled={send.isPending || reply.trim().length < 5}
+            >
               <Send /> {send.isPending ? "Sending…" : "Send reply"}
             </Button>
             <Button
@@ -344,7 +363,12 @@ function ScanSchedule() {
       {data.pausedReason && (
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
           <span className="font-semibold text-destructive">Paused: {data.pausedReason}</span>
-          <Button size="sm" variant="outline" disabled={disabled} onClick={() => update.mutate({ resume: true })}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => update.mutate({ resume: true })}
+          >
             Resume scanning
           </Button>
         </div>
@@ -354,7 +378,6 @@ function ScanSchedule() {
 }
 
 function RemovalsPage() {
-
   const [tab, setTab] = useState<(typeof tabs)[number]>("Flagged");
   const { data: cases = [], isLoading } = useRemovalCases();
   const { data: lastScan } = useLastScan();
@@ -370,9 +393,7 @@ function RemovalsPage() {
       void qc.invalidateQueries({ queryKey: ["removal_scans", "latest"] });
       if (result.checked === 0) toast.success("Every review has already been scanned.");
       else
-        toast.success(
-          `Scanned ${result.checked} reviews — ${result.flagged} flagged for removal.`,
-        );
+        toast.success(`Scanned ${result.checked} reviews — ${result.flagged} flagged for removal.`);
     },
     onError: (error: unknown) =>
       toast.error(error instanceof Error ? error.message : "Scan could not finish."),
@@ -421,11 +442,7 @@ function RemovalsPage() {
         description="Every review is scanned against platform content policy. Genuine criticism is never flagged — only reviews that break the rules."
         actions={
           <Button onClick={() => runScan.mutate()} disabled={runScan.isPending}>
-            {runScan.isPending ? (
-              <RefreshCw className="animate-spin" />
-            ) : (
-              <ScanEye />
-            )}
+            {runScan.isPending ? <RefreshCw className="animate-spin" /> : <ScanEye />}
             {runScan.isPending ? "Scanning…" : "Scan reviews"}
           </Button>
         }
@@ -446,8 +463,6 @@ function RemovalsPage() {
       <div className="mb-6">
         <ScanSchedule />
       </div>
-
-
 
       <Section
         title="Removal cases"
@@ -474,7 +489,9 @@ function RemovalsPage() {
           <div className="p-5">
             <EmptyState
               icon={ShieldX}
-              title={isLoading || runScan.isPending ? "Scanning your reviews…" : "Nothing breaks policy"}
+              title={
+                isLoading || runScan.isPending ? "Scanning your reviews…" : "Nothing breaks policy"
+              }
               description={
                 isLoading || runScan.isPending
                   ? "The policy scan is checking your latest reviews."

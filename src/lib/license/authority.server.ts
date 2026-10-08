@@ -2,19 +2,20 @@
  * License Authority — the single server-side source of truth for license state.
  * Frontend input is never trusted: every identifier is re-resolved from the database.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DatabaseClient as Db } from "../backend-types";
+import { jsonValue, rateLimitDatabase } from "../backend-types";
 import { createHmac } from "node:crypto";
-import { correlationId, decryptSecret, hashIp, hashToken, safeEqual, signPayload } from "./crypto.server";
-
+import {
+  correlationId,
+  decryptSecret,
+  hashIp,
+  hashToken,
+  safeEqual,
+  signPayload,
+} from "./crypto.server";
 
 export type LicenseStatus =
-  | "pending"
-  | "active"
-  | "suspended"
-  | "expired"
-  | "revoked"
-  | "cancelled"
-  | "transfer_pending";
+  "pending" | "active" | "suspended" | "expired" | "revoked" | "cancelled" | "transfer_pending";
 
 export type ValidationResult =
   | "valid"
@@ -28,9 +29,6 @@ export type ValidationResult =
   | "installation_limit_reached"
   | "invalid_signature"
   | "rate_limited";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Db = SupabaseClient<any, any, any>;
 
 export const OFFLINE_GRACE_HOURS = 72;
 const VALIDATION_LEEWAY_MS = 5 * 60 * 1000; // replay window for signed requests
@@ -68,7 +66,7 @@ export async function recordLicenseEvent(
     result: input.result ?? "success",
     resource: input.resource ?? null,
     correlation_id: input.correlation ?? correlationId(),
-    metadata: scrub(input.metadata ?? {}),
+    metadata: jsonValue(scrub(input.metadata ?? {})),
   });
 }
 
@@ -97,7 +95,7 @@ export async function recordLicenseSecurityEvent(
     result: input.result ?? "denied",
     message: input.message.slice(0, 1000),
     correlation_id: input.correlation ?? correlationId(),
-    metadata: scrub(input.metadata ?? {}),
+    metadata: jsonValue(scrub(input.metadata ?? {})),
   });
 }
 
@@ -117,12 +115,15 @@ export async function rateLimit(
   // One atomic statement. Reading the row, adding one in JavaScript and writing
   // it back loses increments under concurrent requests, which let the limit be
   // bypassed by issuing requests in parallel.
-  const { data: count, error } = await db.rpc("consume_rate_limit", {
+  const { data: count, error } = await rateLimitDatabase(db).rpc("consume_rate_limit", {
     p_bucket: bucket,
     p_key_hash: keyHash,
     p_window_start: windowStart,
   });
-  const retryAfterSeconds = Math.max(1, Math.ceil((new Date(windowStart).getTime() + windowMs - Date.now()) / 1000));
+  const retryAfterSeconds = Math.max(
+    1,
+    Math.ceil((new Date(windowStart).getTime() + windowMs - Date.now()) / 1000),
+  );
   if (error || typeof count !== "number") {
     // The counter could not be advanced, so this request cannot be proven to be
     // within the limit. Refuse rather than allow an unmetered request through.
@@ -147,9 +148,13 @@ export function normalizeDomain(value: string) {
       /* fall through to manual cleanup */
     }
   }
-  host = host.replace(/^https?:\/\//, "").split("/")[0]!.split(":")[0]!;
+  host = host
+    .replace(/^https?:\/\//, "")
+    .split("/")[0]!
+    .split(":")[0]!;
   host = host.replace(/^www\./, "").replace(/\.$/, "");
-  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host)) throw new Error("Enter a valid domain, for example clientdomain.com");
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(host))
+    throw new Error("Enter a valid domain, for example clientdomain.com");
   return host;
 }
 
@@ -175,9 +180,10 @@ export function verifyRequestSignature(
     return { ok: false as const, reason: "stale_request" };
   }
   const expected = buildRequestSignature(rawBody, timestamp, licenseSecret);
-  return safeEqual(expected, signature) ? { ok: true as const } : { ok: false as const, reason: "invalid_signature" };
+  return safeEqual(expected, signature)
+    ? { ok: true as const }
+    : { ok: false as const, reason: "invalid_signature" };
 }
-
 
 /* ---------------- validation ---------------- */
 
@@ -218,7 +224,13 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
   const correlation = correlationId();
   const ipHash = hashIp(input.ip);
 
-  const limit = await rateLimit(db, "license_validate", input.licenseKey || (input.ip ?? "anonymous"), 120, 300);
+  const limit = await rateLimit(
+    db,
+    "license_validate",
+    input.licenseKey || (input.ip ?? "anonymous"),
+    120,
+    300,
+  );
   if (!limit.allowed) {
     await recordLicenseSecurityEvent(db, {
       eventType: "validation_rate_limited",
@@ -226,16 +238,28 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
       correlation,
       metadata: { attempts: limit.count },
     });
-    return { ok: false, result: "rate_limited", correlation, retryAfterSeconds: limit.retryAfterSeconds };
+    return {
+      ok: false,
+      result: "rate_limited",
+      correlation,
+      retryAfterSeconds: limit.retryAfterSeconds,
+    };
   }
 
   const { data: license } = await db
     .from("licenses")
-    .select("id, license_key, client_id, status, features, expires_at, max_installations, secret_hash, current_version")
+    .select(
+      "id, license_key, client_id, status, features, expires_at, max_installations, secret_hash, current_version",
+    )
     .eq("license_key", input.licenseKey.trim().toUpperCase())
     .maybeSingle();
 
-  const fail = async (result: ValidationResult, message: string, licenseId?: string | null, clientId?: string | null) => {
+  const fail = async (
+    result: ValidationResult,
+    message: string,
+    licenseId?: string | null,
+    clientId?: string | null,
+  ) => {
     await db.from("license_validations").insert({
       license_id: licenseId ?? null,
       domain: input.domain ?? null,
@@ -262,26 +286,56 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
     try {
       secret = await decryptSecret(license.secret_hash);
     } catch {
-      return fail("invalid_signature", "License secret could not be verified.", license.id, license.client_id);
+      return fail(
+        "invalid_signature",
+        "License secret could not be verified.",
+        license.id,
+        license.client_id,
+      );
     }
-    const verified = verifyRequestSignature(input.rawBody ?? "", input.signature, input.timestamp ?? null, secret);
-    if (!verified.ok) return fail("invalid_signature", `Request signature rejected (${verified.reason}).`, license.id, license.client_id);
+    const verified = verifyRequestSignature(
+      input.rawBody ?? "",
+      input.signature,
+      input.timestamp ?? null,
+      secret,
+    );
+    if (!verified.ok)
+      return fail(
+        "invalid_signature",
+        `Request signature rejected (${verified.reason}).`,
+        license.id,
+        license.client_id,
+      );
   }
-
 
   let domain: string;
   try {
     domain = normalizeDomain(input.domain ?? "");
   } catch {
-    return fail("domain_not_authorized", "Domain is not a valid hostname.", license.id, license.client_id);
+    return fail(
+      "domain_not_authorized",
+      "Domain is not a valid hostname.",
+      license.id,
+      license.client_id,
+    );
   }
 
   if (license.status !== "active") {
-    return fail("license_not_active", `License state is ${license.status}.`, license.id, license.client_id);
+    return fail(
+      "license_not_active",
+      `License state is ${license.status}.`,
+      license.id,
+      license.client_id,
+    );
   }
   if (expired(license.expires_at)) {
     await db.from("licenses").update({ status: "expired" }).eq("id", license.id);
-    return fail("license_expired", "License expiry date has passed.", license.id, license.client_id);
+    return fail(
+      "license_expired",
+      "License expiry date has passed.",
+      license.id,
+      license.client_id,
+    );
   }
 
   const { data: authorizedDomain } = await db
@@ -292,10 +346,20 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
     .eq("domain", domain)
     .maybeSingle();
   if (!authorizedDomain) {
-    return fail("domain_not_authorized", `Domain ${domain} is not authorized for this license.`, license.id, license.client_id);
+    return fail(
+      "domain_not_authorized",
+      `Domain ${domain} is not authorized for this license.`,
+      license.id,
+      license.client_id,
+    );
   }
 
-  let installation: { id: string; installation_ref: string; status: string; domain: string } | null = null;
+  let installation: {
+    id: string;
+    installation_ref: string;
+    status: string;
+    domain: string;
+  } | null = null;
   if (input.installationRef) {
     const { data } = await db
       .from("license_installations")
@@ -303,17 +367,39 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
       .eq("license_id", license.id)
       .eq("installation_ref", input.installationRef)
       .maybeSingle();
-    if (!data) return fail("installation_not_found", "Installation is not registered for this license.", license.id, license.client_id);
-    if (data.status !== "active") return fail("installation_revoked", `Installation state is ${data.status}.`, license.id, license.client_id);
+    if (!data)
+      return fail(
+        "installation_not_found",
+        "Installation is not registered for this license.",
+        license.id,
+        license.client_id,
+      );
+    if (data.status !== "active")
+      return fail(
+        "installation_revoked",
+        `Installation state is ${data.status}.`,
+        license.id,
+        license.client_id,
+      );
     if (data.domain !== domain) {
-      return fail("domain_not_authorized", "Installation is bound to a different domain.", license.id, license.client_id);
+      return fail(
+        "domain_not_authorized",
+        "Installation is bound to a different domain.",
+        license.id,
+        license.client_id,
+      );
     }
     installation = data;
   }
 
   const features: string[] = license.features ?? [];
   if (input.feature && !features.includes(input.feature)) {
-    return fail("feature_not_licensed", `Feature ${input.feature} is not included in this license.`, license.id, license.client_id);
+    return fail(
+      "feature_not_licensed",
+      `Feature ${input.feature} is not included in this license.`,
+      license.id,
+      license.client_id,
+    );
   }
 
   const now = new Date().toISOString();
@@ -321,7 +407,11 @@ export async function validateLicense(db: Db, input: ValidationInput): Promise<V
   if (installation) {
     await db
       .from("license_installations")
-      .update({ last_validated_at: now, last_seen_ip_hash: ipHash, version: input.version ?? undefined })
+      .update({
+        last_validated_at: now,
+        last_seen_ip_hash: ipHash,
+        ...(input.version != null ? { version: input.version } : {}),
+      })
       .eq("id", installation.id);
   }
   await db.from("license_validations").insert({

@@ -24,6 +24,10 @@ export type Phase = (typeof PHASES)[number];
 export const CASE_STATUSES = ["flagged", "submitted", "approved", "rejected", "dismissed"] as const;
 export type CaseStatus = (typeof CASE_STATUSES)[number];
 
+export function isCaseStatus(value: string): value is CaseStatus {
+  return (CASE_STATUSES as readonly string[]).includes(value);
+}
+
 /**
  * Verified outcomes only. There is deliberately no value meaning "we think it
  * will be removed" or "the provider said they removed it" — those live in the

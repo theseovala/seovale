@@ -58,7 +58,7 @@ export interface PriorityResult {
 /** Deterministic confidence: measured data is high, compared/reported data is lower. */
 export function confidenceOf(finding: PrioritizableFinding): Confidence {
   if (finding.source === "cross_source") {
-    const verdict = String((finding.evidence as any)?.verdict ?? "");
+    const verdict = String(finding.evidence?.["verdict"] ?? "");
     if (verdict === "MISMATCH") return "medium";
     if (verdict === "UNVERIFIED" || verdict === "MISSING") return "low";
     return "medium";
@@ -83,14 +83,16 @@ export function affectedCount(finding: PrioritizableFinding): number {
  */
 export function prioritize(findings: PrioritizableFinding[]): PriorityResult[] {
   const scored = findings.map((finding) => {
-    const severity = SEVERITY_WEIGHT[(finding.severity as Severity)] ?? 1;
+    const severity = SEVERITY_WEIGHT[finding.severity as Severity] ?? 1;
     const confidence = confidenceOf(finding);
     const affected = affectedCount(finding);
     const effort = EFFORT_BY_CATEGORY[finding.category] ?? 1.5;
     // Frequency is dampened so one page with 30 broken links cannot dwarf a
     // site-wide critical issue.
-    const frequency = 1 + Math.log10(affected) ;
-    const raw = ((severity * 2 + Math.max(finding.impact, 1)) * CONFIDENCE_WEIGHT[confidence] * frequency) / effort;
+    const frequency = 1 + Math.log10(affected);
+    const raw =
+      ((severity * 2 + Math.max(finding.impact, 1)) * CONFIDENCE_WEIGHT[confidence] * frequency) /
+      effort;
     return {
       code: finding.code,
       confidence,

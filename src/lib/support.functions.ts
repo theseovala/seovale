@@ -16,7 +16,7 @@ const settingsSchema = z.object({
 
 export type SupportSettings = z.infer<typeof settingsSchema>;
 
-async function workspaceId(supabase: any, userId: string) {
+async function workspaceId(supabase: import("./backend-types").DatabaseClient, userId: string) {
   const { data } = await supabase
     .from("workspace_members")
     .select("workspace_id")

@@ -101,7 +101,10 @@ async function verifyOne(
   if (definition.kind === "manual") {
     return {
       status: definition.approvalRequired ? "approval_required" : "not_supported",
-      detail: definition.manualReason ?? definition.approvalRequired ?? "No public API is available for this provider.",
+      detail:
+        definition.manualReason ??
+        definition.approvalRequired ??
+        "No public API is available for this provider.",
       evidence: {},
     };
   }
@@ -118,28 +121,57 @@ async function verifyOne(
       .eq("workspace_id", workspaceId)
       .maybeSingle();
     if (!connection || connection.status !== "connected") {
-      return { status: "not_configured", detail: "Google Business Profile is not connected yet.", evidence: {} };
+      return {
+        status: "not_configured",
+        detail: "Google Business Profile is not connected yet.",
+        evidence: {},
+      };
     }
-    const expired = connection.token_expires_at ? Date.parse(connection.token_expires_at) < Date.now() : false;
+    const expired = connection.token_expires_at
+      ? Date.parse(connection.token_expires_at) < Date.now()
+      : false;
     return expired
-      ? { status: "auth_required", detail: "The Google sign-in expired. Reconnect the account.", evidence: { account: connection.google_account_email } }
-      : { status: "connected", detail: "Google Business Profile connection is active.", evidence: { account: connection.google_account_email } };
+      ? {
+          status: "auth_required",
+          detail: "The Google sign-in expired. Reconnect the account.",
+          evidence: { account: connection.google_account_email },
+        }
+      : {
+          status: "connected",
+          detail: "Google Business Profile connection is active.",
+          evidence: { account: connection.google_account_email },
+        };
   }
 
   const { data: row } = await admin
     .from("integration_connections")
-    .select("id,status,account_ref,account_label,access_token_ciphertext,token_expires_at,last_error")
+    .select(
+      "id,status,account_ref,account_label,access_token_ciphertext,token_expires_at,last_error",
+    )
     .eq("workspace_id", workspaceId)
     .eq("provider", definition.id)
     .maybeSingle();
 
   if (definition.kind === "api_key") {
     if (!providers.providerConfigured(definition.id, creds)) {
-      return { status: "not_configured", detail: `${definition.label} has no API key stored yet.`, evidence: {} };
+      return {
+        status: "not_configured",
+        detail: `${definition.label} has no API key stored yet.`,
+        evidence: {},
+      };
     }
     // Configured: verify with a real provider request rather than trusting the row.
-    const result = await providers.testApiKeyProvider(definition.id, row?.account_ref ?? null, creds);
-    if (result.ok) return { status: "connected", detail: result.message, evidence: { account: row?.account_label ?? row?.account_ref ?? null } };
+    const result = await providers.testApiKeyProvider(
+      definition.id,
+      row?.account_ref ?? null,
+      creds,
+    );
+    if (result.ok)
+      return {
+        status: "connected",
+        detail: result.message,
+        evidence: { account: row?.account_label ?? row?.account_ref ?? null },
+      };
     const code = result.code ?? "PROVIDER_ERROR";
     const status: DiscoveryStatus =
       code === "NOT_CONFIGURED"
@@ -148,7 +180,10 @@ async function verifyOne(
           ? "approval_required"
           : code === "UNAVAILABLE"
             ? "unavailable"
-            : code === "AUTHENTICATION_FAILED" || code === "INVALID_CREDENTIALS" || code === "TOKEN_EXPIRED" || code === "INSUFFICIENT_SCOPE"
+            : code === "AUTHENTICATION_FAILED" ||
+                code === "INVALID_CREDENTIALS" ||
+                code === "TOKEN_EXPIRED" ||
+                code === "INSUFFICIENT_SCOPE"
               ? "auth_required"
               : "failed";
     return { status, detail: result.message, evidence: { code } };
@@ -156,16 +191,34 @@ async function verifyOne(
 
   // OAuth providers.
   if (!row?.access_token_ciphertext) {
-    return { status: "not_configured", detail: `${definition.label} has not been connected yet.`, evidence: {} };
+    return {
+      status: "not_configured",
+      detail: `${definition.label} has not been connected yet.`,
+      evidence: {},
+    };
   }
-  const expired = row.token_expires_at ? Date.parse(row.token_expires_at) - Date.now() < 60_000 : false;
+  const expired = row.token_expires_at
+    ? Date.parse(row.token_expires_at) - Date.now() < 60_000
+    : false;
   if (expired || row.status === "expired") {
-    return { status: "auth_required", detail: `${definition.label} access expired. Reconnect the account.`, evidence: { account: row.account_label } };
+    return {
+      status: "auth_required",
+      detail: `${definition.label} access expired. Reconnect the account.`,
+      evidence: { account: row.account_label },
+    };
   }
   if (row.status === "error") {
-    return { status: "failed", detail: row.last_error ?? `${definition.label} reported an error on the last check.`, evidence: {} };
+    return {
+      status: "failed",
+      detail: row.last_error ?? `${definition.label} reported an error on the last check.`,
+      evidence: {},
+    };
   }
-  return { status: "connected", detail: `${definition.label} connection is active.`, evidence: { account: row.account_label ?? row.account_ref } };
+  return {
+    status: "connected",
+    detail: `${definition.label} connection is active.`,
+    evidence: { account: row.account_label ?? row.account_ref },
+  };
 }
 
 /**
@@ -179,7 +232,9 @@ export async function discoverPlatforms(
   html: string,
 ): Promise<PlatformDiscovery[]> {
   const links = extractProfileLinks(html);
-  const definitions = SCAN_PROVIDERS.map((id) => INTEGRATIONS.find((i) => i.id === id)).filter(Boolean) as IntegrationDefinition[];
+  const definitions = SCAN_PROVIDERS.map((id) => INTEGRATIONS.find((i) => i.id === id)).filter(
+    Boolean,
+  ) as IntegrationDefinition[];
 
   return await Promise.all(
     definitions.map(async (definition) => {
@@ -187,7 +242,11 @@ export async function discoverPlatforms(
       try {
         verified = await verifyOne(admin, workspaceId, definition);
       } catch (caught) {
-        verified = { status: "failed", detail: caught instanceof Error ? caught.message : String(caught), evidence: {} };
+        verified = {
+          status: "failed",
+          detail: caught instanceof Error ? caught.message : String(caught),
+          evidence: {},
+        };
       }
       const profileLinks = links[definition.id] ?? [];
       const relevant = profileLinks.length > 0 || verified.status === "connected";

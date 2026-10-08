@@ -33,7 +33,8 @@ export const Route = createFileRoute("/api/public/license/update-check")({
           return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
         }
         const body = Body.safeParse(parsed);
-        if (!body.success) return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
+        if (!body.success)
+          return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { validateLicense } = await import("@/lib/license/authority.server");
@@ -52,13 +53,18 @@ export const Route = createFileRoute("/api/public/license/update-check")({
         if (!decision.ok) {
           return Response.json(
             { ok: false, result: decision.result, correlationId: decision.correlation },
-            { status: decision.result === "rate_limited" ? 429 : 403, headers: { "Cache-Control": "no-store" } },
+            {
+              status: decision.result === "rate_limited" ? 429 : 403,
+              headers: { "Cache-Control": "no-store" },
+            },
           );
         }
 
         const { data: release } = await supabaseAdmin
           .from("license_releases")
-          .select("release_ref, version, build_id, checksum_sha256, signature, signing_key_id, min_supported_version, published_at")
+          .select(
+            "release_ref, version, build_id, checksum_sha256, signature, signing_key_id, min_supported_version, published_at",
+          )
           .eq("status", "published")
           .eq("channel", body.data.channel ?? "stable")
           .order("published_at", { ascending: false })
@@ -66,10 +72,15 @@ export const Route = createFileRoute("/api/public/license/update-check")({
           .maybeSingle();
 
         if (!release || !verifyRelease(release)) {
-          return Response.json({ ok: true, updateAvailable: false }, { headers: { "Cache-Control": "no-store" } });
+          return Response.json(
+            { ok: true, updateAvailable: false },
+            { headers: { "Cache-Control": "no-store" } },
+          );
         }
         const newer = compareVersions(release.version, body.data.currentVersion) > 0;
-        const compatible = !release.min_supported_version || compareVersions(body.data.currentVersion, release.min_supported_version) >= 0;
+        const compatible =
+          !release.min_supported_version ||
+          compareVersions(body.data.currentVersion, release.min_supported_version) >= 0;
 
         return Response.json(
           {

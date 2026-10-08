@@ -16,7 +16,13 @@ import {
 } from "lucide-react";
 import { IntegrationManager } from "@/components/app/IntegrationManager";
 import { AppShell } from "@/components/app/AppShell";
-import { PageHeader, Section, PlatformIcon, StatusBadge, EmptyState } from "@/components/app/primitives";
+import {
+  PageHeader,
+  Section,
+  PlatformIcon,
+  StatusBadge,
+  EmptyState,
+} from "@/components/app/primitives";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -32,9 +38,16 @@ import {
 } from "@/lib/seovale-db";
 import { platformName } from "@/lib/domain";
 import { cn } from "@/lib/utils";
-import { disconnectGoogleBusiness, getGoogleBusinessConnection, startGoogleBusinessConnection, syncGoogleBusinessReviews } from "@/lib/google-business.functions";
+import { validateSettingsSearch } from "@/lib/settings-search";
+import {
+  disconnectGoogleBusiness,
+  getGoogleBusinessConnection,
+  startGoogleBusinessConnection,
+  syncGoogleBusinessReviews,
+} from "@/lib/google-business.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  validateSearch: validateSettingsSearch,
   head: () => ({
     meta: [
       { title: "Settings — Seovale" },
@@ -108,23 +121,24 @@ function Toggle({
 }
 
 function SettingsPage() {
-  const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("business");
-
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
-    if (requested && tabs.some((t) => t.id === requested)) setTab(requested as (typeof tabs)[number]["id"]);
-  }, []);
+  const { tab = "business" } = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   return (
     <AppShell>
-      <PageHeader eyebrow="Configure" title="Settings" description="Set up the business, platforms and rules that power Seovale." />
+      <PageHeader
+        eyebrow="Configure"
+        title="Settings"
+        description="Set up the business, platforms and rules that power Seovale."
+      />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
         <nav className="card-elevated h-fit p-2">
           {tabs.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => void navigate({ search: { tab: t.id } })}
+              aria-current={tab === t.id ? "page" : undefined}
               className={cn(
                 "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
                 tab === t.id ? "bg-accent text-primary" : "text-muted-foreground hover:bg-muted",
@@ -160,7 +174,9 @@ function BusinessProfileTab() {
   if (isLoading) {
     return (
       <Section title="Business profile">
-        <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
       </Section>
     );
   }
@@ -168,7 +184,11 @@ function BusinessProfileTab() {
   if (!brand) {
     return (
       <Section title="Business profile">
-        <EmptyState icon={Building2} title="No brand profile found" description="Your workspace has not been set up with brand settings yet." />
+        <EmptyState
+          icon={Building2}
+          title="No brand profile found"
+          description="Your workspace has not been set up with brand settings yet."
+        />
       </Section>
     );
   }
@@ -189,18 +209,37 @@ function BusinessProfileTab() {
   return (
     <Section title="Business profile" description="How your organization appears across Seovale">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Business name" value={form.brand_name ?? ""} onChange={(v) => set("brand_name", v)} />
+        <Field
+          label="Business name"
+          value={form.brand_name ?? ""}
+          onChange={(v) => set("brand_name", v)}
+        />
         <Field label="Industry" value={form.industry ?? ""} onChange={(v) => set("industry", v)} />
         <Field label="Website" value={form.website ?? ""} onChange={(v) => set("website", v)} />
-        <Field label="Reply tone" value={form.reply_tone ?? ""} onChange={(v) => set("reply_tone", v)} hint="Used when drafting AI replies to reviews." />
-        <Field label="Reply signature" value={form.reply_signature ?? ""} onChange={(v) => set("reply_signature", v)} />
-        <Field label="Alert email" value={form.alert_email ?? ""} onChange={(v) => set("alert_email", v)} />
+        <Field
+          label="Reply tone"
+          value={form.reply_tone ?? ""}
+          onChange={(v) => set("reply_tone", v)}
+          hint="Used when drafting AI replies to reviews."
+        />
+        <Field
+          label="Reply signature"
+          value={form.reply_signature ?? ""}
+          onChange={(v) => set("reply_signature", v)}
+        />
+        <Field
+          label="Alert email"
+          value={form.alert_email ?? ""}
+          onChange={(v) => set("alert_email", v)}
+        />
       </div>
       <div className="mt-5 flex gap-2 border-t pt-4">
         <Button onClick={save} disabled={update.isPending}>
           {update.isPending && <Loader2 className="animate-spin" />} Save changes
         </Button>
-        <Button variant="ghost" onClick={() => setForm(brand)}>Cancel</Button>
+        <Button variant="ghost" onClick={() => setForm(brand)}>
+          Cancel
+        </Button>
       </div>
     </Section>
   );
@@ -217,7 +256,10 @@ function PlatformsTab() {
   const google = useQuery({ queryKey: ["google_business_connection"], queryFn: () => statusFn() });
   const connectGoogle = useMutation({
     mutationFn: ({ authWindow }: { authWindow: Window | null }) =>
-      startFn({ data: { origin: window.location.origin } }).then((result) => ({ ...result, authWindow })),
+      startFn({ data: { origin: window.location.origin } }).then((result) => ({
+        ...result,
+        authWindow,
+      })),
     onSuccess: ({ authorizationUrl, authWindow }) => {
       // Sandboxed preview iframes may silently block navigating a pre-opened
       // popup (no exception — the popup just stays on about:blank). Try the
@@ -246,7 +288,11 @@ function PlatformsTab() {
             stuck = false;
           }
           if (stuck) {
-            try { authWindow.close(); } catch { /* ignore */ }
+            try {
+              authWindow.close();
+            } catch {
+              /* ignore */
+            }
             assignFallback();
           }
         }, 1500);
@@ -262,7 +308,9 @@ function PlatformsTab() {
   const syncGoogle = useMutation({
     mutationFn: () => syncFn(),
     onSuccess: (result) => {
-      toast.success(`Google synced: ${result.reviewsCreated} new, ${result.reviewsUpdated} updated`);
+      toast.success(
+        `Google synced: ${result.reviewsCreated} new, ${result.reviewsUpdated} updated`,
+      );
       void queryClient.invalidateQueries();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -279,7 +327,9 @@ function PlatformsTab() {
   if (isLoading) {
     return (
       <Section title="Connected platforms">
-        <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
       </Section>
     );
   }
@@ -287,13 +337,21 @@ function PlatformsTab() {
   if (!platformsList || platformsList.length === 0) {
     return (
       <Section title="Connected platforms">
-        <EmptyState icon={Plug} title="No platforms configured" description="Platforms your workspace can connect to will appear here." />
+        <EmptyState
+          icon={Plug}
+          title="No platforms configured"
+          description="Platforms your workspace can connect to will appear here."
+        />
       </Section>
     );
   }
 
   return (
-    <Section title="Connected platforms" description="Connect a platform to start monitoring reviews and comments" bodyClassName="p-0">
+    <Section
+      title="Connected platforms"
+      description="Connect a platform to start monitoring reviews and comments"
+      bodyClassName="p-0"
+    >
       <ul className="divide-y">
         {platformsList.map((p) => {
           const isGoogle = p.platform === "google";
@@ -302,7 +360,9 @@ function PlatformsTab() {
             <li key={p.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
               <PlatformIcon id={p.platform as never} size="lg" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{p.display_name || platformName(p.platform)}</p>
+                <p className="text-sm font-semibold">
+                  {p.display_name || platformName(p.platform)}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {connected
                     ? `Last synced ${(isGoogle ? google.data?.lastSyncedAt : p.last_synced_at) ? relativeTime((isGoogle ? google.data?.lastSyncedAt : p.last_synced_at) as string) : "never"}${(isGoogle ? google.data?.email : p.account_ref) ? ` · ${isGoogle ? google.data?.email : p.account_ref}` : ""}`
@@ -314,8 +374,31 @@ function PlatformsTab() {
               <StatusBadge status={connected ? "Connected" : "Disconnected"} />
               {connected ? (
                 <>
-                  {isGoogle && <Button size="sm" onClick={() => syncGoogle.mutate()} disabled={syncGoogle.isPending}>{syncGoogle.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}Sync now</Button>}
-                  <Button size="sm" variant="outline" onClick={() => isGoogle ? removeGoogle.mutate() : disconnect.mutate(p.id, { onSuccess: () => toast.success(`${p.display_name} disconnected`), onError: (err) => toast.error(err.message || "Could not disconnect") })} disabled={disconnect.isPending || removeGoogle.isPending}>Disconnect</Button>
+                  {isGoogle && (
+                    <Button
+                      size="sm"
+                      onClick={() => syncGoogle.mutate()}
+                      disabled={syncGoogle.isPending}
+                    >
+                      {syncGoogle.isPending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                      Sync now
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      isGoogle
+                        ? removeGoogle.mutate()
+                        : disconnect.mutate(p.id, {
+                            onSuccess: () => toast.success(`${p.display_name} disconnected`),
+                            onError: (err) => toast.error(err.message || "Could not disconnect"),
+                          })
+                    }
+                    disabled={disconnect.isPending || removeGoogle.isPending}
+                  >
+                    Disconnect
+                  </Button>
                 </>
               ) : p.supports_oauth ? (
                 <Button
@@ -323,7 +406,9 @@ function PlatformsTab() {
                   disabled={isGoogle && (!google.data?.configured || connectGoogle.isPending)}
                   onClick={() => {
                     if (!isGoogle) {
-                      toast("This platform connection will be available in a future provider rollout.");
+                      toast(
+                        "This platform connection will be available in a future provider rollout.",
+                      );
                       return;
                     }
                     const authWindow = window.open("about:blank", "seovale-google-business");
@@ -334,13 +419,18 @@ function PlatformsTab() {
                     connectGoogle.mutate({ authWindow });
                   }}
                 >
-                  {connectGoogle.isPending && isGoogle && <Loader2 className="animate-spin" />}Connect
+                  {connectGoogle.isPending && isGoogle && <Loader2 className="animate-spin" />}
+                  Connect
                 </Button>
               ) : (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => toast("This platform doesn't support self-serve connection. Submit a connection request and our team will set it up.")}
+                  onClick={() =>
+                    toast(
+                      "This platform doesn't support self-serve connection. Submit a connection request and our team will set it up.",
+                    )
+                  }
                 >
                   <ExternalLink /> Connection request
                 </Button>
@@ -360,7 +450,9 @@ function NotificationsTab() {
   if (isLoading) {
     return (
       <Section title="Alert notifications">
-        <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
       </Section>
     );
   }
@@ -368,7 +460,11 @@ function NotificationsTab() {
   if (!brand) {
     return (
       <Section title="Alert notifications">
-        <EmptyState icon={Bell} title="No brand profile found" description="Notification preferences require a brand profile." />
+        <EmptyState
+          icon={Bell}
+          title="No brand profile found"
+          description="Notification preferences require a brand profile."
+        />
       </Section>
     );
   }
@@ -407,7 +503,9 @@ function LocationsTab() {
   if (isLoading) {
     return (
       <Section title="Locations">
-        <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
       </Section>
     );
   }
@@ -415,20 +513,32 @@ function LocationsTab() {
   if (!locations || locations.length === 0) {
     return (
       <Section title="Locations">
-        <EmptyState icon={MapPin} title="No locations yet" description="Locations added to this workspace will appear here." />
+        <EmptyState
+          icon={MapPin}
+          title="No locations yet"
+          description="Locations added to this workspace will appear here."
+        />
       </Section>
     );
   }
 
   return (
-    <Section title="Locations" description="Branches monitored in this workspace" bodyClassName="p-0">
+    <Section
+      title="Locations"
+      description="Branches monitored in this workspace"
+      bodyClassName="p-0"
+    >
       <ul className="divide-y">
         {locations.map((l) => (
           <li key={l.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-            <span className="grid size-9 place-items-center rounded-lg bg-accent text-primary"><MapPin className="size-4" /></span>
+            <span className="grid size-9 place-items-center rounded-lg bg-accent text-primary">
+              <MapPin className="size-4" />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold">{l.name}</span>
-              <span className="block text-xs text-muted-foreground">{l.city}, {l.country} · Manager: {l.manager ?? "Unassigned"}</span>
+              <span className="block text-xs text-muted-foreground">
+                {l.city}, {l.country} · Manager: {l.manager ?? "Unassigned"}
+              </span>
             </span>
           </li>
         ))}
@@ -453,7 +563,9 @@ function AccountTab() {
   if (isLoading) {
     return (
       <Section title="Account">
-        <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+        <div className="flex items-center justify-center py-10 text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
+        </div>
       </Section>
     );
   }
@@ -461,7 +573,11 @@ function AccountTab() {
   if (!profile) {
     return (
       <Section title="Account">
-        <EmptyState icon={CreditCard} title="Not signed in" description="Sign in to manage your account." />
+        <EmptyState
+          icon={CreditCard}
+          title="Not signed in"
+          description="Sign in to manage your account."
+        />
       </Section>
     );
   }
@@ -471,7 +587,12 @@ function AccountTab() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Full name" value={fullName} onChange={setFullName} />
         <Field label="Job title" value={jobTitle} onChange={setJobTitle} />
-        <Field label="Email" value={profile.email ?? ""} onChange={() => {}} hint="Managed by your login provider." />
+        <Field
+          label="Email"
+          value={profile.email ?? ""}
+          onChange={() => {}}
+          hint="Managed by your login provider."
+        />
       </div>
       <div className="mt-5 flex gap-2 border-t pt-4">
         <Button

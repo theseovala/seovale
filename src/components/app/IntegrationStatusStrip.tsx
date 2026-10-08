@@ -44,7 +44,11 @@ export function IntegrationStatusStrip() {
           ))}
         </div>
       ) : integrations.isError ? (
-        <EmptyState icon={Plug} title="Status unavailable" description={(integrations.error as Error).message} />
+        <EmptyState
+          icon={Plug}
+          title="Status unavailable"
+          description={(integrations.error as Error).message}
+        />
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {INTEGRATIONS.map((definition) => {

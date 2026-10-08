@@ -88,7 +88,12 @@ export async function runAiText(system: string, prompt: string): Promise<AiTextR
   const { streamText } = await import("ai");
   const errors: unknown[] = [];
 
-  const finish = async (result: any, model: string, provider: string, started: number): Promise<AiTextResult> => {
+  const finish = async (
+    result: ReturnType<typeof streamText>,
+    model: string,
+    provider: string,
+    started: number,
+  ): Promise<AiTextResult> => {
     const output = (await result.text).trim();
     let inputTokens: number | null = null;
     let outputTokens: number | null = null;
@@ -157,9 +162,16 @@ export async function runAiText(system: string, prompt: string): Promise<AiTextR
   // Every provider failed. Report which one failed and why, in order, so the
   // stored ai_runs row names the real blocker instead of the last stream error.
   if (errors.length) {
-    const tried = ["lovable_ai", ...(createDirectOpenAI() ? ["openai"] : []), ...(anthropic ? ["anthropic"] : [])];
+    const tried = [
+      "lovable_ai",
+      ...(createDirectOpenAI() ? ["openai"] : []),
+      ...(anthropic ? ["anthropic"] : []),
+    ];
     const detail = errors
-      .map((error, index) => `${tried[index] ?? "provider"}: ${error instanceof Error ? error.message : String(error)}`)
+      .map(
+        (error, index) =>
+          `${tried[index] ?? "provider"}: ${error instanceof Error ? error.message : String(error)}`,
+      )
       .join(" | ");
     throw new Error(`Every AI provider failed — ${detail}`);
   }
@@ -174,7 +186,6 @@ function unfence(text: string) {
   const end = Math.max(body.lastIndexOf("}"), body.lastIndexOf("]"));
   return start >= 0 && end > start ? body.slice(start, end + 1) : body.trim();
 }
-
 
 export class AiValidationError extends Error {}
 
@@ -196,7 +207,9 @@ export async function runAiJson<T>(
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const result = await runAiText(
       `${system}\n\nReply with a single JSON object and nothing else. No prose, no markdown fence.`,
-      feedback ? `${prompt}\n\nYour previous reply was rejected: ${feedback}\nReturn corrected JSON.` : prompt,
+      feedback
+        ? `${prompt}\n\nYour previous reply was rejected: ${feedback}\nReturn corrected JSON.`
+        : prompt,
     );
     try {
       const parsed = JSON.parse(unfence(result.output));
@@ -213,4 +226,3 @@ export async function runAiJson<T>(
     `The AI reply did not pass validation after ${attempts} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
   );
 }
-

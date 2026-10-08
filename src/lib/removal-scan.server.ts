@@ -2,6 +2,8 @@
 // and by the scheduled scan route. Works with any Supabase client instance.
 import { isGoogleReview } from "@/lib/google-review-privacy";
 import { z } from "zod";
+import { jsonValue } from "./backend-types";
+import { removalDatabase } from "./removal/database.server";
 export const VIOLATIONS = [
   "fake_or_incentivised",
   "spam_or_advertising",
@@ -63,7 +65,10 @@ export function parseScanResults(text: string) {
  * return false, so a route is reported as needing provider approval rather than
  * being presented as something the system can act on.
  */
-export async function providerApiApproved(client: any, workspaceId: string): Promise<boolean> {
+export async function providerApiApproved(
+  client: import("./backend-types").DatabaseClient,
+  workspaceId: string,
+): Promise<boolean> {
   try {
     const { data, error } = await client
       .from("google_business_connections")
@@ -83,19 +88,20 @@ export async function providerApiApproved(client: any, workspaceId: string): Pro
  * removal cases plus a scan history row. Returns real counts only.
  */
 export async function runRemovalScan(
-  client: any,
+  database: import("./backend-types").DatabaseClient,
   workspaceId: string,
   limit: number,
   startedBy: string | null,
 ) {
   const started = Date.now();
+  const client = removalDatabase(database);
 
   const { data: existing, error: existingError } = await client
     .from("removal_cases")
     .select("review_id")
     .eq("workspace_id", workspaceId);
   if (existingError) throw existingError;
-  const assessed = new Set((existing ?? []).map((r: any) => r.review_id as string));
+  const assessed = new Set((existing ?? []).map((r) => r.review_id));
 
   const { data: reviews, error } = await client
     .from("reviews")
@@ -108,7 +114,7 @@ export async function runRemovalScan(
     .limit(400);
   if (error) throw error;
 
-  const pending = ((reviews ?? []) as any[])
+  const pending = (reviews ?? [])
     .filter(
       (r) =>
         !isGoogleReview(r) &&
@@ -223,7 +229,7 @@ export async function runRemovalScan(
         status: "flagged",
         model,
         route: primaryRoute(routes),
-        evidence,
+        evidence: jsonValue(evidence),
         outcome: evidence.verification.outcome,
         outcome_at: evidence.verification.outcomeAt,
       };

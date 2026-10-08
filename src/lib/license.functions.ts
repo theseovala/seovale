@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-type Ctx = { supabase: any; userId: string };
+type Ctx = import("./backend-types").AuthContext;
 
 const admin = async () => (await import("@/integrations/supabase/client.server")).supabaseAdmin;
 
@@ -27,41 +27,68 @@ export const getLicenseOverview = createServerFn({ method: "POST" })
       )
       .order("created_at", { ascending: false })
       .limit(200);
-    if (!isStaff) licenseQuery.in("client_id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]);
+    if (!isStaff)
+      licenseQuery.in(
+        "client_id",
+        clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"],
+      );
     const { data: licenses } = await licenseQuery;
 
-    const licenseIds = (licenses ?? []).map((l: any) => l.id);
-    const [{ data: clients }, { data: domains }, { data: installations }, { data: releases }, mfa] = await Promise.all([
-      isStaff
-        ? db.from("license_clients").select("id, name, contact_email, status, created_at").order("created_at", { ascending: false })
-        : db.from("license_clients").select("id, name, contact_email, status, created_at").in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
-      licenseIds.length
-        ? db.from("license_domains").select("id, license_id, domain, status, created_at").in("license_id", licenseIds)
-        : Promise.resolve({ data: [] }),
-      licenseIds.length
-        ? db
-            .from("license_installations")
-            .select("id, installation_ref, license_id, domain, status, version, activated_at, last_validated_at")
-            .in("license_id", licenseIds)
-        : Promise.resolve({ data: [] }),
-      // Releases are only visible to staff or to a user who belongs to a client
-      // company with at least one licence; nobody else learns a build exists.
-      isStaff || clientIds.length
-        ? db
-            .from("license_releases")
-            .select("id, release_ref, version, build_id, channel, checksum_sha256, status, inspection_passed, inspection_report, created_at, published_at, signature")
-            .order("created_at", { ascending: false })
-            .limit(50)
-        : Promise.resolve({ data: [] }),
-      db.from("admin_mfa").select("confirmed_at").eq("user_id", ctx.userId).maybeSingle(),
-    ]);
+    const licenseIds = (licenses ?? []).map((l) => l.id);
+    const [{ data: clients }, { data: domains }, { data: installations }, { data: releases }, mfa] =
+      await Promise.all([
+        isStaff
+          ? db
+              .from("license_clients")
+              .select("id, name, contact_email, status, created_at")
+              .order("created_at", { ascending: false })
+          : db
+              .from("license_clients")
+              .select("id, name, contact_email, status, created_at")
+              .in("id", clientIds.length ? clientIds : ["00000000-0000-0000-0000-000000000000"]),
+        licenseIds.length
+          ? db
+              .from("license_domains")
+              .select("id, license_id, domain, status, created_at")
+              .in("license_id", licenseIds)
+          : Promise.resolve({ data: [] }),
+        licenseIds.length
+          ? db
+              .from("license_installations")
+              .select(
+                "id, installation_ref, license_id, domain, status, version, activated_at, last_validated_at",
+              )
+              .in("license_id", licenseIds)
+          : Promise.resolve({ data: [] }),
+        // Releases are only visible to staff or to a user who belongs to a client
+        // company with at least one licence; nobody else learns a build exists.
+        isStaff || clientIds.length
+          ? db
+              .from("license_releases")
+              .select(
+                "id, release_ref, version, build_id, channel, checksum_sha256, status, inspection_passed, inspection_report, created_at, published_at, signature",
+              )
+              .order("created_at", { ascending: false })
+              .limit(50)
+          : Promise.resolve({ data: [] }),
+        db.from("admin_mfa").select("confirmed_at").eq("user_id", ctx.userId).maybeSingle(),
+      ]);
 
     const [{ data: securityEvents }, { data: events }, { data: downloads }] = await Promise.all([
       roles.some((r) => ["owner", "super_admin", "security_admin"].includes(r))
-        ? db.from("license_security_events").select("*").order("created_at", { ascending: false }).limit(100)
+        ? db
+            .from("license_security_events")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(100)
         : Promise.resolve({ data: [] }),
       licenseIds.length
-        ? db.from("license_events").select("*").in("license_id", licenseIds).order("created_at", { ascending: false }).limit(100)
+        ? db
+            .from("license_events")
+            .select("*")
+            .in("license_id", licenseIds)
+            .order("created_at", { ascending: false })
+            .limit(100)
         : Promise.resolve({ data: [] }),
       licenseIds.length
         ? db
@@ -78,12 +105,12 @@ export const getLicenseOverview = createServerFn({ method: "POST" })
       isStaff,
       mfaEnabled: Boolean(mfa.data?.confirmed_at),
       clients: clients ?? [],
-      licenses: (licenses ?? []).map((license: any) => ({
+      licenses: (licenses ?? []).map((license) => ({
         ...license,
-        domains: (domains ?? []).filter((d: any) => d.license_id === license.id),
-        installations: (installations ?? []).filter((i: any) => i.license_id === license.id),
+        domains: (domains ?? []).filter((d) => d.license_id === license.id),
+        installations: (installations ?? []).filter((i) => i.license_id === license.id),
       })),
-      releases: (releases ?? []).map((r: any) => ({ ...r, signed: Boolean(r.signature) })),
+      releases: (releases ?? []).map((r) => ({ ...r, signed: Boolean(r.signature) })),
       securityEvents: securityEvents ?? [],
       events: events ?? [],
       downloads: downloads ?? [],
@@ -97,8 +124,17 @@ export const getMfaStatus = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const ctx = context as Ctx;
     const db = await admin();
-    const { data } = await db.from("admin_mfa").select("confirmed_at, last_used_at, locked_until").eq("user_id", ctx.userId).maybeSingle();
-    return { enrolled: Boolean(data), confirmed: Boolean(data?.confirmed_at), lastUsedAt: data?.last_used_at ?? null, lockedUntil: data?.locked_until ?? null };
+    const { data } = await db
+      .from("admin_mfa")
+      .select("confirmed_at, last_used_at, locked_until")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    return {
+      enrolled: Boolean(data),
+      confirmed: Boolean(data?.confirmed_at),
+      lastUsedAt: data?.last_used_at ?? null,
+      lockedUntil: data?.locked_until ?? null,
+    };
   });
 
 export const startMfaEnrollment = createServerFn({ method: "POST" })
@@ -107,12 +143,21 @@ export const startMfaEnrollment = createServerFn({ method: "POST" })
     const ctx = context as Ctx;
     const db = await admin();
     const crypto = await import("@/lib/license/crypto.server");
-    const { data: existing } = await db.from("admin_mfa").select("confirmed_at").eq("user_id", ctx.userId).maybeSingle();
-    if (existing?.confirmed_at) throw new Error("Two-factor authentication is already active for this account.");
+    const { data: existing } = await db
+      .from("admin_mfa")
+      .select("confirmed_at")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    if (existing?.confirmed_at)
+      throw new Error("Two-factor authentication is already active for this account.");
 
     const secret = crypto.generateTotpSecret();
     const recoveryCodes = crypto.generateRecoveryCodes();
-    const { data: profile } = await db.from("profiles").select("email").eq("id", ctx.userId).maybeSingle();
+    const { data: profile } = await db
+      .from("profiles")
+      .select("email")
+      .eq("id", ctx.userId)
+      .maybeSingle();
     await db.from("admin_mfa").upsert(
       {
         user_id: ctx.userId,
@@ -128,13 +173,19 @@ export const startMfaEnrollment = createServerFn({ method: "POST" })
 
 export const confirmMfaEnrollment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { code: string }) => z.object({ code: z.string().min(6).max(12) }).parse(input))
+  .inputValidator((input: { code: string }) =>
+    z.object({ code: z.string().min(6).max(12) }).parse(input),
+  )
   .handler(async ({ data, context }) => {
     const ctx = context as Ctx;
     const db = await admin();
     const crypto = await import("@/lib/license/crypto.server");
     const authority = await import("@/lib/license/authority.server");
-    const { data: row } = await db.from("admin_mfa").select("secret_ciphertext, confirmed_at").eq("user_id", ctx.userId).maybeSingle();
+    const { data: row } = await db
+      .from("admin_mfa")
+      .select("secret_ciphertext, confirmed_at")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
     if (!row) throw new Error("Start two-factor setup first.");
     const secret = await crypto.decryptSecret(row.secret_ciphertext);
     if (!crypto.verifyTotp(secret, data.code)) {
@@ -145,8 +196,15 @@ export const confirmMfaEnrollment = createServerFn({ method: "POST" })
       });
       throw new Error("That code is not correct. Try the next code from your authenticator app.");
     }
-    await db.from("admin_mfa").update({ confirmed_at: new Date().toISOString(), failed_attempts: 0 }).eq("user_id", ctx.userId);
-    await authority.recordLicenseEvent(db, { eventType: "mfa_enabled", actor: ctx.userId, resource: "admin_mfa" });
+    await db
+      .from("admin_mfa")
+      .update({ confirmed_at: new Date().toISOString(), failed_attempts: 0 })
+      .eq("user_id", ctx.userId);
+    await authority.recordLicenseEvent(db, {
+      eventType: "mfa_enabled",
+      actor: ctx.userId,
+      resource: "admin_mfa",
+    });
     return { ok: true };
   });
 
@@ -174,8 +232,13 @@ export const verifyStepUp = createServerFn({ method: "POST" })
       throw new Error("Too many attempts. Wait a few minutes and try again.");
     }
 
-    const { data: row } = await db.from("admin_mfa").select("secret_ciphertext, confirmed_at, recovery_hashes").eq("user_id", ctx.userId).maybeSingle();
-    if (!row?.confirmed_at) throw new Error("Set up two-factor authentication before using this action.");
+    const { data: row } = await db
+      .from("admin_mfa")
+      .select("secret_ciphertext, confirmed_at, recovery_hashes")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    if (!row?.confirmed_at)
+      throw new Error("Set up two-factor authentication before using this action.");
 
     const secret = await crypto.decryptSecret(row.secret_ciphertext);
     let ok = crypto.verifyTotp(secret, data.code);
@@ -197,15 +260,26 @@ export const verifyStepUp = createServerFn({ method: "POST" })
       });
       throw new Error("That code is not correct.");
     }
-    await db.from("admin_mfa").update({ last_used_at: new Date().toISOString(), failed_attempts: 0 }).eq("user_id", ctx.userId);
+    await db
+      .from("admin_mfa")
+      .update({ last_used_at: new Date().toISOString(), failed_attempts: 0 })
+      .eq("user_id", ctx.userId);
     const expiresAt = await access.grantStepUp(db, ctx.userId, data.action);
-    await authority.recordLicenseEvent(db, { eventType: "step_up_granted", actor: ctx.userId, resource: data.action });
+    await authority.recordLicenseEvent(db, {
+      eventType: "step_up_granted",
+      actor: ctx.userId,
+      resource: data.action,
+    });
     return { expiresAt };
   });
 
 /* ---------------- administration ---------------- */
 
-async function guard(db: any, userId: string, action: any) {
+async function guard(
+  db: import("./backend-types").DatabaseClient,
+  userId: string,
+  action: import("./license/access.server").SensitiveAction,
+) {
   const access = await import("@/lib/license/access.server");
   await access.requireRole(db, userId, action);
   await access.requireStepUp(db, userId, action);
@@ -214,7 +288,9 @@ async function guard(db: any, userId: string, action: any) {
 export const createLicenseClient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { name: string; contactEmail?: string }) =>
-    z.object({ name: z.string().min(2).max(120), contactEmail: z.string().email().optional() }).parse(input),
+    z
+      .object({ name: z.string().min(2).max(120), contactEmail: z.string().email().optional() })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     const ctx = context as Ctx;
@@ -227,21 +303,44 @@ export const createLicenseClient = createServerFn({ method: "POST" })
       .select("id, name")
       .single();
     if (error) throw new Error(error.message);
-    await authority.recordLicenseEvent(db, { clientId: client.id, eventType: "client_created", actor: ctx.userId, resource: client.name });
+    await authority.recordLicenseEvent(db, {
+      clientId: client.id,
+      eventType: "client_created",
+      actor: ctx.userId,
+      resource: client.name,
+    });
     return client;
   });
 
 export const createLicense = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { clientId: string; domain: string; expiresAt?: string | null; maxInstallations?: number; features?: string[] }) =>
+    (input: {
+      clientId: string;
+      domain: string;
+      expiresAt?: string | null;
+      maxInstallations?: number;
+      features?: string[];
+    }) =>
       z
         .object({
           clientId: z.string().uuid(),
           domain: z.string().min(3).max(253),
           expiresAt: z.string().datetime().nullable().optional(),
           maxInstallations: z.number().int().min(1).max(20).optional(),
-          features: z.array(z.enum(["SCAN", "REPORT", "CSV", "ADVANCED_AI", "INTEGRATIONS", "HISTORICAL_DATA", "API_ACCESS"])).optional(),
+          features: z
+            .array(
+              z.enum([
+                "SCAN",
+                "REPORT",
+                "CSV",
+                "ADVANCED_AI",
+                "INTEGRATIONS",
+                "HISTORICAL_DATA",
+                "API_ACCESS",
+              ]),
+            )
+            .optional(),
         })
         .parse(input),
   )
@@ -253,7 +352,11 @@ export const createLicense = createServerFn({ method: "POST" })
     const authority = await import("@/lib/license/authority.server");
 
     const domain = authority.normalizeDomain(data.domain);
-    const { data: client } = await db.from("license_clients").select("id").eq("id", data.clientId).maybeSingle();
+    const { data: client } = await db
+      .from("license_clients")
+      .select("id")
+      .eq("id", data.clientId)
+      .maybeSingle();
     if (!client) throw new Error("That client does not exist.");
 
     const licenseKey = crypto.generateLicenseKey();
@@ -274,12 +377,20 @@ export const createLicense = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    const { error: domainError } = await db
-      .from("license_domains")
-      .insert({ license_id: license.id, domain, status: "active", verified_at: new Date().toISOString(), created_by: ctx.userId });
+    const { error: domainError } = await db.from("license_domains").insert({
+      license_id: license.id,
+      domain,
+      status: "active",
+      verified_at: new Date().toISOString(),
+      created_by: ctx.userId,
+    });
     if (domainError) {
       await db.from("licenses").delete().eq("id", license.id);
-      throw new Error(domainError.message.includes("duplicate") ? `${domain} is already bound to another license.` : domainError.message);
+      throw new Error(
+        domainError.message.includes("duplicate")
+          ? `${domain} is already bound to another license.`
+          : domainError.message,
+      );
     }
 
     await authority.recordLicenseEvent(db, {
@@ -312,18 +423,36 @@ export const setLicenseStatus = createServerFn({ method: "POST" })
     await guard(db, ctx.userId, action);
     const authority = await import("@/lib/license/authority.server");
 
-    const { data: license } = await db.from("licenses").select("id, client_id, status, license_key").eq("id", data.licenseId).maybeSingle();
+    const { data: license } = await db
+      .from("licenses")
+      .select("id, client_id, status, license_key")
+      .eq("id", data.licenseId)
+      .maybeSingle();
     if (!license) throw new Error("License not found.");
 
-    const patch = { status: data.status, ...(data.status === "active" ? { activated_at: new Date().toISOString() } : {}) };
+    const patch = {
+      status: data.status,
+      ...(data.status === "active" ? { activated_at: new Date().toISOString() } : {}),
+    };
     const { error } = await db.from("licenses").update(patch).eq("id", data.licenseId);
 
     if (error) throw new Error(error.message);
 
     if (data.status === "revoked") {
-      await db.from("license_revocations").insert({ license_id: license.id, reason: data.reason ?? "Revoked by administrator", revoked_by: ctx.userId });
-      await db.from("license_installations").update({ status: "revoked" }).eq("license_id", license.id);
-      await db.from("license_download_tokens").update({ revoked_at: new Date().toISOString() }).eq("license_id", license.id).is("used_at", null);
+      await db.from("license_revocations").insert({
+        license_id: license.id,
+        reason: data.reason ?? "Revoked by administrator",
+        revoked_by: ctx.userId,
+      });
+      await db
+        .from("license_installations")
+        .update({ status: "revoked" })
+        .eq("license_id", license.id);
+      await db
+        .from("license_download_tokens")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("license_id", license.id)
+        .is("used_at", null);
     }
     await authority.recordLicenseEvent(db, {
       licenseId: license.id,
@@ -346,10 +475,17 @@ export const renewLicense = createServerFn({ method: "POST" })
     const db = await admin();
     await guard(db, ctx.userId, "renew_license");
     const authority = await import("@/lib/license/authority.server");
-    const { data: license } = await db.from("licenses").select("id, client_id, status, license_key").eq("id", data.licenseId).maybeSingle();
+    const { data: license } = await db
+      .from("licenses")
+      .select("id, client_id, status, license_key")
+      .eq("id", data.licenseId)
+      .maybeSingle();
     if (!license) throw new Error("License not found.");
     const status = license.status === "expired" ? "active" : license.status;
-    const { error } = await db.from("licenses").update({ expires_at: data.expiresAt, status }).eq("id", data.licenseId);
+    const { error } = await db
+      .from("licenses")
+      .update({ expires_at: data.expiresAt, status })
+      .eq("id", data.licenseId);
     if (error) throw new Error(error.message);
     await authority.recordLicenseEvent(db, {
       licenseId: license.id,
@@ -373,19 +509,40 @@ export const changeLicenseDomain = createServerFn({ method: "POST" })
     await guard(db, ctx.userId, "change_domain");
     const authority = await import("@/lib/license/authority.server");
     const domain = authority.normalizeDomain(data.domain);
-    const { data: license } = await db.from("licenses").select("id, client_id, license_key").eq("id", data.licenseId).maybeSingle();
+    const { data: license } = await db
+      .from("licenses")
+      .select("id, client_id, license_key")
+      .eq("id", data.licenseId)
+      .maybeSingle();
     if (!license) throw new Error("License not found.");
 
-    await db.from("license_domains").update({ status: "revoked" }).eq("license_id", license.id).eq("status", "active");
-    const { error } = await db
+    await db
       .from("license_domains")
-      .upsert(
-        { license_id: license.id, domain, status: "active", verified_at: new Date().toISOString(), created_by: ctx.userId },
-        { onConflict: "license_id,domain" },
+      .update({ status: "revoked" })
+      .eq("license_id", license.id)
+      .eq("status", "active");
+    const { error } = await db.from("license_domains").upsert(
+      {
+        license_id: license.id,
+        domain,
+        status: "active",
+        verified_at: new Date().toISOString(),
+        created_by: ctx.userId,
+      },
+      { onConflict: "license_id,domain" },
+    );
+    if (error)
+      throw new Error(
+        error.message.includes("duplicate")
+          ? `${domain} is already bound to another license.`
+          : error.message,
       );
-    if (error) throw new Error(error.message.includes("duplicate") ? `${domain} is already bound to another license.` : error.message);
     // Existing installations are bound to the previous domain and must re-register.
-    await db.from("license_installations").update({ status: "reset" }).eq("license_id", license.id).eq("status", "active");
+    await db
+      .from("license_installations")
+      .update({ status: "reset" })
+      .eq("license_id", license.id)
+      .eq("status", "active");
     await authority.recordLicenseEvent(db, {
       licenseId: license.id,
       clientId: license.client_id,
@@ -399,7 +556,9 @@ export const changeLicenseDomain = createServerFn({ method: "POST" })
 
 export const resetInstallation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { installationId: string }) => z.object({ installationId: z.string().uuid() }).parse(input))
+  .inputValidator((input: { installationId: string }) =>
+    z.object({ installationId: z.string().uuid() }).parse(input),
+  )
   .handler(async ({ data, context }) => {
     const ctx = context as Ctx;
     const db = await admin();
@@ -411,7 +570,10 @@ export const resetInstallation = createServerFn({ method: "POST" })
       .eq("id", data.installationId)
       .maybeSingle();
     if (!installation) throw new Error("Installation not found.");
-    const { error } = await db.from("license_installations").update({ status: "reset" }).eq("id", installation.id);
+    const { error } = await db
+      .from("license_installations")
+      .update({ status: "reset" })
+      .eq("id", installation.id);
     if (error) throw new Error(error.message);
     await authority.recordLicenseEvent(db, {
       licenseId: installation.license_id,
@@ -433,19 +595,38 @@ export const transferLicense = createServerFn({ method: "POST" })
     const db = await admin();
     await guard(db, ctx.userId, "transfer_license");
     const authority = await import("@/lib/license/authority.server");
-    const { data: license } = await db.from("licenses").select("id, client_id, license_key").eq("id", data.licenseId).maybeSingle();
+    const { data: license } = await db
+      .from("licenses")
+      .select("id, client_id, license_key")
+      .eq("id", data.licenseId)
+      .maybeSingle();
     if (!license) throw new Error("License not found.");
-    const { data: target } = await db.from("license_clients").select("id").eq("id", data.toClientId).maybeSingle();
+    const { data: target } = await db
+      .from("license_clients")
+      .select("id")
+      .eq("id", data.toClientId)
+      .maybeSingle();
     if (!target) throw new Error("Target client does not exist.");
 
     const { data: transfer, error } = await db
       .from("license_transfers")
-      .insert({ license_id: license.id, from_client_id: license.client_id, to_client_id: data.toClientId, requested_by: ctx.userId, approved_by: ctx.userId, status: "completed", completed_at: new Date().toISOString() })
+      .insert({
+        license_id: license.id,
+        from_client_id: license.client_id,
+        to_client_id: data.toClientId,
+        requested_by: ctx.userId,
+        approved_by: ctx.userId,
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      })
       .select("id")
       .single();
     if (error) throw new Error(error.message);
     await db.from("licenses").update({ client_id: data.toClientId }).eq("id", license.id);
-    await db.from("license_installations").update({ client_id: data.toClientId, status: "reset" }).eq("license_id", license.id);
+    await db
+      .from("license_installations")
+      .update({ client_id: data.toClientId, status: "reset" })
+      .eq("license_id", license.id);
     await authority.recordLicenseEvent(db, {
       licenseId: license.id,
       clientId: data.toClientId,
@@ -473,7 +654,9 @@ export const requestDownload = createServerFn({ method: "POST" })
 
     // Either staff with the download permission, or a user of the owning client.
     const roles = await access.listRoles(db, ctx.userId);
-    const staffAllowed = roles.some((r) => (access.SENSITIVE_ACTIONS.download_package as readonly string[]).includes(r));
+    const staffAllowed = roles.some((r) =>
+      (access.SENSITIVE_ACTIONS.download_package as readonly string[]).includes(r),
+    );
     const { data: license } = await db
       .from("licenses")
       .select("id, client_id, status, expires_at, license_key")
@@ -491,19 +674,27 @@ export const requestDownload = createServerFn({ method: "POST" })
       });
       throw new Error("You do not have access to this license.");
     }
-    if (license.status !== "active") throw new Error(`Downloads are only available for active licenses (this one is ${license.status}).`);
+    if (license.status !== "active")
+      throw new Error(
+        `Downloads are only available for active licenses (this one is ${license.status}).`,
+      );
 
     // Downloading a signed package is a sensitive action: step-up is mandatory.
     await access.requireStepUp(db, ctx.userId, "download_package");
 
     const { data: release } = await db
       .from("license_releases")
-      .select("id, release_ref, version, build_id, checksum_sha256, signature, status, inspection_passed")
+      .select(
+        "id, release_ref, version, build_id, checksum_sha256, signature, status, inspection_passed",
+      )
       .eq("id", data.releaseId)
       .maybeSingle();
-    if (!release || release.status !== "published") throw new Error("That release is not published.");
-    if (!release.inspection_passed) throw new Error("That release did not pass artifact inspection.");
-    if (!operations.verifyRelease(release)) throw new Error("That release failed its signature check.");
+    if (!release || release.status !== "published")
+      throw new Error("That release is not published.");
+    if (!release.inspection_passed)
+      throw new Error("That release did not pass artifact inspection.");
+    if (!operations.verifyRelease(release))
+      throw new Error("That release failed its signature check.");
 
     const issued = await operations.issueDownloadToken(db, {
       licenseId: license.id,
@@ -534,7 +725,9 @@ export const listAdminUsers = createServerFn({ method: "POST" })
     const db = await admin();
     const access = await import("@/lib/license/access.server");
     const roles = await access.listRoles(db, ctx.userId);
-    if (!roles.some((r) => (access.SENSITIVE_ACTIONS.manage_access as readonly string[]).includes(r))) {
+    if (
+      !roles.some((r) => (access.SENSITIVE_ACTIONS.manage_access as readonly string[]).includes(r))
+    ) {
       const authority = await import("@/lib/license/authority.server");
       await authority.recordLicenseSecurityEvent(db, {
         actor: ctx.userId,
@@ -545,16 +738,19 @@ export const listAdminUsers = createServerFn({ method: "POST" })
       });
       throw new Error("You do not have permission to perform this action.");
     }
-    const { data } = await db.from("admin_roles").select("id, user_id, role, created_at").order("created_at");
-    const userIds = [...new Set((data ?? []).map((row: any) => row.user_id))];
+    const { data } = await db
+      .from("admin_roles")
+      .select("id, user_id, role, created_at")
+      .order("created_at");
+    const userIds = [...new Set((data ?? []).map((row) => row.user_id))];
     const { data: profiles } = userIds.length
       ? await db.from("profiles").select("id, email, full_name").in("id", userIds)
-      : { data: [] as any[] };
+      : { data: [] };
     return {
       allowed: true,
-      entries: (data ?? []).map((row: any) => ({
+      entries: (data ?? []).map((row) => ({
         ...row,
-        email: (profiles ?? []).find((p: any) => p.id === row.user_id)?.email ?? null,
+        email: (profiles ?? []).find((p) => p.id === row.user_id)?.email ?? null,
       })),
     };
   });
@@ -565,7 +761,15 @@ export const setAdminRole = createServerFn({ method: "POST" })
     z
       .object({
         email: z.string().email(),
-        role: z.enum(["owner", "super_admin", "security_admin", "tech_lead", "developer", "qa", "support"]),
+        role: z.enum([
+          "owner",
+          "super_admin",
+          "security_admin",
+          "tech_lead",
+          "developer",
+          "qa",
+          "support",
+        ]),
         grant: z.boolean(),
       })
       .parse(input),
@@ -575,10 +779,19 @@ export const setAdminRole = createServerFn({ method: "POST" })
     const db = await admin();
     await guard(db, ctx.userId, "manage_access");
     const authority = await import("@/lib/license/authority.server");
-    const { data: profile } = await db.from("profiles").select("id, email").ilike("email", data.email).maybeSingle();
+    const { data: profile } = await db
+      .from("profiles")
+      .select("id, email")
+      .ilike("email", data.email)
+      .maybeSingle();
     if (!profile) throw new Error("No account with that email exists yet.");
     if (data.grant) {
-      const { error } = await db.from("admin_roles").upsert({ user_id: profile.id, role: data.role, granted_by: ctx.userId }, { onConflict: "user_id,role" });
+      const { error } = await db
+        .from("admin_roles")
+        .upsert(
+          { user_id: profile.id, role: data.role, granted_by: ctx.userId },
+          { onConflict: "user_id,role" },
+        );
       if (error) throw new Error(error.message);
     } else {
       await db.from("admin_roles").delete().eq("user_id", profile.id).eq("role", data.role);
@@ -604,7 +817,14 @@ export const setAdminRole = createServerFn({ method: "POST" })
 export const publishRelease = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(
-    (input: { version: string; buildId: string; artifactPath: string; channel?: "stable" | "beta"; minSupportedVersion?: string | null; notes?: string }) =>
+    (input: {
+      version: string;
+      buildId: string;
+      artifactPath: string;
+      channel?: "stable" | "beta";
+      minSupportedVersion?: string | null;
+      notes?: string;
+    }) =>
       z
         .object({
           version: z.string().min(1).max(40),
@@ -624,14 +844,20 @@ export const publishRelease = createServerFn({ method: "POST" })
     const crypto = await import("@/lib/license/crypto.server");
     const authority = await import("@/lib/license/authority.server");
 
-    const { data: file, error: downloadError } = await db.storage.from(operations.RELEASE_BUCKET).download(data.artifactPath);
-    if (downloadError || !file) throw new Error("That artifact was not found in the release storage.");
+    const { data: file, error: downloadError } = await db.storage
+      .from(operations.RELEASE_BUCKET)
+      .download(data.artifactPath);
+    if (downloadError || !file)
+      throw new Error("That artifact was not found in the release storage.");
     const bytes = Buffer.from(await file.arrayBuffer());
     const checksum = crypto.sha256Hex(bytes.toString("base64"));
 
     // Artifact inspection: the packaging step uploads a manifest of every entry.
-    const { data: manifestFile } = await db.storage.from(operations.RELEASE_BUCKET).download(`${data.artifactPath}.manifest.json`);
-    if (!manifestFile) throw new Error("No manifest was uploaded next to this artifact — inspection cannot run.");
+    const { data: manifestFile } = await db.storage
+      .from(operations.RELEASE_BUCKET)
+      .download(`${data.artifactPath}.manifest.json`);
+    if (!manifestFile)
+      throw new Error("No manifest was uploaded next to this artifact — inspection cannot run.");
     const manifest = JSON.parse(await manifestFile.text()) as { entries?: string[] };
     const inspection = operations.inspectArtifactEntries(manifest.entries ?? []);
 
@@ -688,17 +914,30 @@ export const publishRelease = createServerFn({ method: "POST" })
 
 export const rollbackRelease = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { releaseId: string }) => z.object({ releaseId: z.string().uuid() }).parse(input))
+  .inputValidator((input: { releaseId: string }) =>
+    z.object({ releaseId: z.string().uuid() }).parse(input),
+  )
   .handler(async ({ data, context }) => {
     const ctx = context as Ctx;
     const db = await admin();
     await guard(db, ctx.userId, "publish_release");
     const authority = await import("@/lib/license/authority.server");
-    const { data: release } = await db.from("license_releases").select("id, release_ref").eq("id", data.releaseId).maybeSingle();
+    const { data: release } = await db
+      .from("license_releases")
+      .select("id, release_ref")
+      .eq("id", data.releaseId)
+      .maybeSingle();
     if (!release) throw new Error("Release not found.");
     await db.from("license_releases").update({ status: "rolled_back" }).eq("id", release.id);
-    await db.from("license_download_tokens").update({ revoked_at: new Date().toISOString() }).eq("release_id", release.id).is("used_at", null);
-    await authority.recordLicenseEvent(db, { eventType: "release_rolled_back", actor: ctx.userId, resource: release.release_ref });
+    await db
+      .from("license_download_tokens")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("release_id", release.id)
+      .is("used_at", null);
+    await authority.recordLicenseEvent(db, {
+      eventType: "release_rolled_back",
+      actor: ctx.userId,
+      resource: release.release_ref,
+    });
     return { ok: true };
   });
-

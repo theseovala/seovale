@@ -1,18 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useLocations, useBrandSettings } from "./seovale-db";
 import { BRAND } from "./domain";
 
-export const ALL_LOCATIONS = "All locations";
-
-interface AppState {
-  /** Selected location name, or "All locations". */
-  location: string;
-  setLocation: (name: string) => void;
-  locationNames: string[];
-  brandName: string;
-}
-
-const Ctx = createContext<AppState | null>(null);
+import { ALL_LOCATIONS, AppStateContext, type AppState } from "./app-state";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState<string>(ALL_LOCATIONS);
@@ -29,11 +19,5 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [location, locations, brand],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-export function useApp() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useApp outside AppProvider");
-  return v;
+  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }

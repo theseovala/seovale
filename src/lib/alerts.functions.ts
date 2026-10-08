@@ -3,7 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-type Ctx = { supabase: any; userId: string };
+type Ctx = import("./backend-types").AuthContext;
 
 async function workspaceIdFor(context: Ctx) {
   const { data, error } = await context.supabase
@@ -28,7 +28,9 @@ export const evaluateAlertRules = createServerFn({ method: "POST" })
 
     const { data: rules } = await context.supabase
       .from("alert_rules")
-      .select("negative_rating_threshold, unanswered_hours, rating_drop_threshold, volume_spike_percent")
+      .select(
+        "negative_rating_threshold, unanswered_hours, rating_drop_threshold, volume_spike_percent",
+      )
       .eq("workspace_id", workspaceId)
       .maybeSingle();
     const negativeThreshold = rules?.negative_rating_threshold ?? 2;
@@ -61,7 +63,11 @@ export const evaluateAlertRules = createServerFn({ method: "POST" })
       .select("id, kind, review_id, created_at, resolved")
       .eq("workspace_id", workspaceId)
       .eq("resolved", false);
-    const openAlerts = (existing ?? []) as Array<{ kind: string; review_id: string | null; created_at: string }>;
+    const openAlerts = (existing ?? []) as Array<{
+      kind: string;
+      review_id: string | null;
+      created_at: string;
+    }>;
     const hasOpenFor = (kind: string, reviewId: string) =>
       openAlerts.some((a) => a.kind === kind && a.review_id === reviewId);
     const hasRecent = (kind: string) =>

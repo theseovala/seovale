@@ -1,9 +1,25 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { MapPin, ArrowUpDown, Building2, Users, Loader2 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip } from "recharts";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RTooltip,
+} from "recharts";
 import { AppShell } from "@/components/app/AppShell";
-import { PageHeader, Section, Stars, StatCard, Trend, StatusBadge, EmptyState } from "@/components/app/primitives";
+import {
+  PageHeader,
+  Section,
+  Stars,
+  StatCard,
+  Trend,
+  StatusBadge,
+  EmptyState,
+} from "@/components/app/primitives";
 import { useLocations, useLiveReviews, useLiveAlerts } from "@/lib/seovale-db";
 import { locationStats } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -18,7 +34,10 @@ export const Route = createFileRoute("/_authenticated/locations")({
           "Compare branch-level reputation scores, ratings, review volume and response rates across every location from one console.",
       },
       { property: "og:title", content: "Multi-Location Management — Seovale" },
-      { property: "og:description", content: "Centralized reputation control for franchises and multi-location brands." },
+      {
+        property: "og:description",
+        content: "Centralized reputation control for franchises and multi-location brands.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -73,35 +92,94 @@ function LocationsPage() {
           <Loader2 className="size-5 animate-spin" />
         </div>
       ) : branches.length === 0 ? (
-        <EmptyState icon={MapPin} title="No locations yet" description="Locations added to the workspace will appear here." />
+        <EmptyState
+          icon={MapPin}
+          title="No locations yet"
+          description="Locations added to the workspace will appear here."
+        />
       ) : (
         <>
           <div className="stagger mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Locations" value={branches.length} sub={`${countries} countries`} icon={Building2} tone="primary" />
-            <StatCard label="Brand average" value={brandAvg || "—"} sub="Weighted by review volume" icon={MapPin} tone="rating" />
-            <StatCard label="Top performer" value={best?.city ?? "—"} sub={best ? `Score ${best.score} · ${best.rating}★` : ""} icon={Users} tone="positive" />
-            <StatCard label="Needs attention" value={worst?.city ?? "—"} sub={worst ? `Score ${worst.score} · trend ${worst.trend}` : ""} icon={MapPin} tone="negative" />
+            <StatCard
+              label="Locations"
+              value={branches.length}
+              sub={`${countries} countries`}
+              icon={Building2}
+              tone="primary"
+            />
+            <StatCard
+              label="Brand average"
+              value={brandAvg || "—"}
+              sub="Weighted by review volume"
+              icon={MapPin}
+              tone="rating"
+            />
+            <StatCard
+              label="Top performer"
+              value={best?.city ?? "—"}
+              sub={best ? `Score ${best.score} · ${best.rating}★` : ""}
+              icon={Users}
+              tone="positive"
+            />
+            <StatCard
+              label="Needs attention"
+              value={worst?.city ?? "—"}
+              sub={worst ? `Score ${worst.score} · trend ${worst.trend}` : ""}
+              icon={MapPin}
+              tone="negative"
+            />
           </div>
 
-          <Section className="mb-4" title="Branch reputation scores" description="Compare all locations at a glance">
+          <Section
+            className="mb-4"
+            title="Branch reputation scores"
+            description="Compare all locations at a glance"
+          >
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={branches} margin={{ left: -22, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="city" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
+                  <XAxis
+                    dataKey="city"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
                   <RTooltip
                     cursor={{ fill: "var(--muted)" }}
-                    contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }}
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
                   />
-                  <Bar dataKey="score" name="Reputation score" fill="var(--chart-1)" radius={[6, 6, 0, 0]} animationDuration={900} />
+                  <Bar
+                    dataKey="score"
+                    name="Reputation score"
+                    fill="var(--chart-1)"
+                    radius={[6, 6, 0, 0]}
+                    animationDuration={900}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </Section>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-            <Section title="All locations" description="Select up to three to compare side by side" bodyClassName="p-0">
+            <Section
+              title="All locations"
+              description="Select up to three to compare side by side"
+              bodyClassName="p-0"
+            >
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead>
@@ -118,7 +196,13 @@ function LocationsPage() {
                   </thead>
                   <tbody className="divide-y">
                     {branches.map((l) => (
-                      <tr key={l.id} className={cn("transition-colors hover:bg-accent/40", compare.includes(l.id) && "bg-accent/50")}>
+                      <tr
+                        key={l.id}
+                        className={cn(
+                          "transition-colors hover:bg-accent/40",
+                          compare.includes(l.id) && "bg-accent/50",
+                        )}
+                      >
                         <td className="px-5 py-3">
                           <input
                             type="checkbox"
@@ -130,19 +214,45 @@ function LocationsPage() {
                         </td>
                         <td className="px-5 py-3">
                           <p className="font-semibold">{l.name}</p>
-                          <p className="text-xs text-muted-foreground">{l.country} · {l.manager ?? "Unassigned"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {l.country} · {l.manager ?? "Unassigned"}
+                          </p>
                         </td>
                         <td className="px-5 py-3">
-                          <span className={cn(
-                            "inline-grid size-9 place-items-center rounded-lg font-display text-xs font-bold",
-                            l.score >= 85 ? "bg-positive-soft text-positive" : l.score >= 75 ? "bg-accent text-primary" : "bg-negative-soft text-negative",
-                          )}>{l.score}</span>
+                          <span
+                            className={cn(
+                              "inline-grid size-9 place-items-center rounded-lg font-display text-xs font-bold",
+                              l.score >= 85
+                                ? "bg-positive-soft text-positive"
+                                : l.score >= 75
+                                  ? "bg-accent text-primary"
+                                  : "bg-negative-soft text-negative",
+                            )}
+                          >
+                            {l.score}
+                          </span>
                         </td>
-                        <td className="px-5 py-3"><span className="flex items-center gap-2"><span className="font-semibold tabular-nums">{l.rating}</span><Stars value={l.rating} size={11} /></span></td>
+                        <td className="px-5 py-3">
+                          <span className="flex items-center gap-2">
+                            <span className="font-semibold tabular-nums">{l.rating}</span>
+                            <Stars value={l.rating} size={11} />
+                          </span>
+                        </td>
                         <td className="px-5 py-3 tabular-nums">{l.reviews.toLocaleString()}</td>
-                        <td className="px-5 py-3"><StatusBadge status={`${l.responseRate}%`} className={l.responseRate >= 90 ? "bg-positive-soft text-positive" : "bg-warning-soft text-rating-foreground"} /></td>
+                        <td className="px-5 py-3">
+                          <StatusBadge
+                            status={`${l.responseRate}%`}
+                            className={
+                              l.responseRate >= 90
+                                ? "bg-positive-soft text-positive"
+                                : "bg-warning-soft text-rating-foreground"
+                            }
+                          />
+                        </td>
                         <td className="px-5 py-3 tabular-nums">{l.openAlerts}</td>
-                        <td className="px-5 py-3"><Trend value={l.trend} suffix="" /></td>
+                        <td className="px-5 py-3">
+                          <Trend value={l.trend} suffix="" />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -150,9 +260,16 @@ function LocationsPage() {
               </div>
             </Section>
 
-            <Section title="Side-by-side comparison" description={compare.length ? `${compare.length} selected` : "Select locations to compare"}>
+            <Section
+              title="Side-by-side comparison"
+              description={
+                compare.length ? `${compare.length} selected` : "Select locations to compare"
+              }
+            >
               {compare.length === 0 ? (
-                <p className="py-10 text-center text-sm text-muted-foreground">Tick locations in the table to compare them here.</p>
+                <p className="py-10 text-center text-sm text-muted-foreground">
+                  Tick locations in the table to compare them here.
+                </p>
               ) : (
                 <div className="space-y-4">
                   {compare.map((id) => {
@@ -165,15 +282,25 @@ function LocationsPage() {
                           <Trend value={l.trend} suffix="" />
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                          {[["Score", l.score], ["Rating", l.rating], ["Reviews", l.reviews.toLocaleString()], ["Response", `${l.responseRate}%`]].map(([k, v]) => (
+                          {[
+                            ["Score", l.score],
+                            ["Rating", l.rating],
+                            ["Reviews", l.reviews.toLocaleString()],
+                            ["Response", `${l.responseRate}%`],
+                          ].map(([k, v]) => (
                             <div key={k as string} className="rounded-lg bg-muted/60 px-3 py-2">
-                              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{k}</p>
+                              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                                {k}
+                              </p>
                               <p className="font-display text-base font-bold">{v}</p>
                             </div>
                           ))}
                         </div>
                         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                          <div className="h-full rounded-full bg-gradient-brand transition-all duration-700" style={{ width: `${l.score}%` }} />
+                          <div
+                            className="h-full rounded-full bg-gradient-brand transition-all duration-700"
+                            style={{ width: `${l.score}%` }}
+                          />
                         </div>
                       </div>
                     );

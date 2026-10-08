@@ -36,13 +36,19 @@ function ProviderDetail({ provider }: { provider: string }) {
     );
   }
   if (detail.isError || !detail.data) {
-    return <p className="px-4 py-3 text-xs text-destructive">{(detail.error as Error)?.message ?? "Could not load details."}</p>;
+    return (
+      <p className="px-4 py-3 text-xs text-destructive">
+        {(detail.error as Error)?.message ?? "Could not load details."}
+      </p>
+    );
   }
   const d = detail.data;
   return (
     <div className="grid gap-4 border-t bg-muted/30 px-4 py-3 sm:grid-cols-3">
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Recent syncs</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Recent syncs
+        </p>
         {d.syncJobs.length === 0 ? (
           <p className="text-xs text-muted-foreground">No sync jobs recorded yet.</p>
         ) : (
@@ -50,21 +56,35 @@ function ProviderDetail({ provider }: { provider: string }) {
             {d.syncJobs.map((job, i) => (
               <li key={i} className="text-xs">
                 <span className="font-medium">{job.jobType}</span>{" "}
-                <span className={job.status === "failed" ? "text-destructive" : "text-muted-foreground"}>· {job.status}</span>
+                <span
+                  className={job.status === "failed" ? "text-destructive" : "text-muted-foreground"}
+                >
+                  · {job.status}
+                </span>
                 <span className="block text-muted-foreground">
-                  {job.completedAt ? `finished ${relativeTime(job.completedAt)}` : job.startedAt ? `started ${relativeTime(job.startedAt)}` : "not started"}
+                  {job.completedAt
+                    ? `finished ${relativeTime(job.completedAt)}`
+                    : job.startedAt
+                      ? `started ${relativeTime(job.startedAt)}`
+                      : "not started"}
                   {job.attempts > 1 ? ` · ${job.attempts} attempts` : ""}
                 </span>
-                {job.lastError ? <span className="block truncate text-destructive">{job.lastError}</span> : null}
+                {job.lastError ? (
+                  <span className="block truncate text-destructive">{job.lastError}</span>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
       </div>
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Rate limit history</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Rate limit history
+        </p>
         {d.rateLimits.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Provider API has not reported rate limits.</p>
+          <p className="text-xs text-muted-foreground">
+            Provider API has not reported rate limits.
+          </p>
         ) : (
           <ul className="space-y-1.5">
             {d.rateLimits.map((r, i) => (
@@ -74,7 +94,8 @@ function ProviderDetail({ provider }: { provider: string }) {
                   {r.remaining ?? "?"}/{r.limit ?? "?"} left
                 </span>
                 <span className="block text-muted-foreground">
-                  {r.resetAt ? `resets ${relativeTime(r.resetAt)} · ` : ""}recorded {relativeTime(r.recordedAt)}
+                  {r.resetAt ? `resets ${relativeTime(r.resetAt)} · ` : ""}recorded{" "}
+                  {relativeTime(r.recordedAt)}
                 </span>
               </li>
             ))}
@@ -93,7 +114,8 @@ function ProviderDetail({ provider }: { provider: string }) {
               <li key={i} className="text-xs">
                 <span className="inline-flex items-center gap-1 font-medium text-destructive">
                   <AlertTriangle className="size-3" />
-                  {e.httpStatus ? `${e.httpStatus} · ` : ""}{e.outcomeCode ?? e.operation}
+                  {e.httpStatus ? `${e.httpStatus} · ` : ""}
+                  {e.outcomeCode ?? e.operation}
                 </span>
                 <span className="block break-words text-muted-foreground">{e.message}</span>
                 <span className="block text-muted-foreground/70">{relativeTime(e.at)}</span>
@@ -133,7 +155,12 @@ export function IntegrationHealthCard() {
       }
       action={
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => health.refetch()} disabled={health.isFetching}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => health.refetch()}
+            disabled={health.isFetching}
+          >
             <RefreshCw className={health.isFetching ? "animate-spin" : ""} /> Refresh
           </Button>
           <Button variant="ghost" size="sm" asChild>
@@ -150,7 +177,11 @@ export function IntegrationHealthCard() {
           <Skeleton className="h-12 w-full" />
         </div>
       ) : health.isError ? (
-        <EmptyState icon={Activity} title="Health unavailable" description={(health.error as Error).message} />
+        <EmptyState
+          icon={Activity}
+          title="Health unavailable"
+          description={(health.error as Error).message}
+        />
       ) : items.length === 0 ? (
         <EmptyState
           icon={Activity}
@@ -181,7 +212,9 @@ export function IntegrationHealthCard() {
                     aria-expanded={isOpen}
                   >
                     <td className="py-2.5 pl-1">
-                      <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                      <ChevronDown
+                        className={`size-3.5 text-muted-foreground transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                      />
                     </td>
                     <td className="py-2.5 pr-3 font-medium">{item.label}</td>
                     <td className="py-2.5 pr-3">
@@ -209,7 +242,10 @@ export function IntegrationHealthCard() {
                     </td>
                     <td className="py-2.5 pr-3 text-xs">
                       {item.errors24h > 0 ? (
-                        <span className="inline-flex items-center gap-1 font-semibold text-destructive" title={item.lastError ?? undefined}>
+                        <span
+                          className="inline-flex items-center gap-1 font-semibold text-destructive"
+                          title={item.lastError ?? undefined}
+                        >
                           <AlertTriangle className="size-3" />
                           {item.errors24h}
                         </span>

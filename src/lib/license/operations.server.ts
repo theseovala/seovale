@@ -2,7 +2,7 @@
  * Installation binding, secure downloads and release integrity.
  * All state transitions happen here so the HTTP and RPC layers stay thin.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DatabaseClient as Db } from "../backend-types";
 import {
   correlationId,
   generateInstallationRef,
@@ -14,10 +14,12 @@ import {
   SIGNING_KEY_ID,
   verifyPayload,
 } from "./crypto.server";
-import { normalizeDomain, rateLimit, recordLicenseEvent, recordLicenseSecurityEvent } from "./authority.server";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Db = SupabaseClient<any, any, any>;
+import {
+  normalizeDomain,
+  rateLimit,
+  recordLicenseEvent,
+  recordLicenseSecurityEvent,
+} from "./authority.server";
 
 export const DOWNLOAD_TOKEN_TTL_SECONDS = 300;
 export const RELEASE_BUCKET = "license-releases";
@@ -34,10 +36,22 @@ export type ActivationOutcome =
  */
 export async function activateInstallation(
   db: Db,
-  input: { licenseKey: string; domain: string; fingerprint: string; version?: string | null; ip?: string | null },
+  input: {
+    licenseKey: string;
+    domain: string;
+    fingerprint: string;
+    version?: string | null;
+    ip?: string | null;
+  },
 ): Promise<ActivationOutcome> {
   const correlation = correlationId();
-  const limit = await rateLimit(db, "license_activate", `${input.licenseKey}:${input.ip ?? "unknown"}`, 10, 900);
+  const limit = await rateLimit(
+    db,
+    "license_activate",
+    `${input.licenseKey}:${input.ip ?? "unknown"}`,
+    10,
+    900,
+  );
   if (!limit.allowed) {
     await recordLicenseSecurityEvent(db, {
       eventType: "activation_rate_limited",
@@ -45,7 +59,12 @@ export async function activateInstallation(
       correlation,
       metadata: { attempts: limit.count },
     });
-    return { ok: false, result: "rate_limited", message: "Too many activation attempts. Try again shortly.", retryAfterSeconds: limit.retryAfterSeconds };
+    return {
+      ok: false,
+      result: "rate_limited",
+      message: "Too many activation attempts. Try again shortly.",
+      retryAfterSeconds: limit.retryAfterSeconds,
+    };
   }
 
   const { data: license } = await db
@@ -94,7 +113,12 @@ export async function activateInstallation(
     .eq("status", "active")
     .eq("domain", domain)
     .maybeSingle();
-  if (!authorized) return deny("domain_not_authorized", `Domain ${domain} is not authorized for this license.`, license.id);
+  if (!authorized)
+    return deny(
+      "domain_not_authorized",
+      `Domain ${domain} is not authorized for this license.`,
+      license.id,
+    );
 
   const fingerprintHash = sha256Hex(`${license.id}:${domain}:${input.fingerprint}`);
 
@@ -109,7 +133,10 @@ export async function activateInstallation(
   if (existing) {
     await db
       .from("license_installations")
-      .update({ last_validated_at: new Date().toISOString(), version: input.version ?? undefined })
+      .update({
+        last_validated_at: new Date().toISOString(),
+        ...(input.version != null ? { version: input.version } : {}),
+      })
       .eq("id", existing.id);
     await db.from("license_activations").insert({
       license_id: license.id,
@@ -118,7 +145,12 @@ export async function activateInstallation(
       result: "already_active",
       correlation_id: correlation,
     });
-    return { ok: true, installationRef: existing.installation_ref, features: license.features ?? [], expiresAt: license.expires_at };
+    return {
+      ok: true,
+      installationRef: existing.installation_ref,
+      features: license.features ?? [],
+      expiresAt: license.expires_at,
+    };
   }
 
   const { count } = await db
@@ -127,7 +159,11 @@ export async function activateInstallation(
     .eq("license_id", license.id)
     .eq("status", "active");
   if ((count ?? 0) >= (license.max_installations ?? 1)) {
-    return deny("installation_limit_reached", "This license has reached its installation limit.", license.id);
+    return deny(
+      "installation_limit_reached",
+      "This license has reached its installation limit.",
+      license.id,
+    );
   }
 
   const installationRef = generateInstallationRef();
@@ -167,7 +203,12 @@ export async function activateInstallation(
     metadata: { domain },
   });
 
-  return { ok: true, installationRef, features: license.features ?? [], expiresAt: license.expires_at };
+  return {
+    ok: true,
+    installationRef,
+    features: license.features ?? [],
+    expiresAt: license.expires_at,
+  };
 }
 
 /* ---------------- secure downloads ---------------- */
@@ -205,7 +246,11 @@ export type RedeemOutcome =
   | { ok: true; url: string; version: string; checksum: string }
   | { ok: false; status: number; message: string };
 
-export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string | null): Promise<RedeemOutcome> {
+export async function redeemDownloadToken(
+  db: Db,
+  rawToken: string,
+  ip?: string | null,
+): Promise<RedeemOutcome> {
   const limit = await rateLimit(db, "license_download", ip ?? "unknown", 30, 300);
   if (!limit.allowed) return { ok: false, status: 429, message: "Too many download attempts." };
 
@@ -215,7 +260,13 @@ export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string 
     .eq("token_hash", hashToken(rawToken))
     .maybeSingle();
 
-  const deny = async (status: number, message: string, eventType: string, licenseId?: string | null, tokenId?: string | null) => {
+  const deny = async (
+    status: number,
+    message: string,
+    eventType: string,
+    licenseId?: string | null,
+    tokenId?: string | null,
+  ) => {
     await recordLicenseSecurityEvent(db, {
       licenseId: licenseId ?? null,
       eventType,
@@ -234,36 +285,94 @@ export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string 
   };
 
   if (!tokenRow) return deny(404, "Download link is not valid.", "download_token_invalid");
-  if (tokenRow.revoked_at) return deny(403, "Download link has been revoked.", "download_token_revoked", tokenRow.license_id, tokenRow.id);
+  if (tokenRow.revoked_at)
+    return deny(
+      403,
+      "Download link has been revoked.",
+      "download_token_revoked",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   if (new Date(tokenRow.expires_at).getTime() < Date.now()) {
-    return deny(403, "Download link has expired.", "download_token_expired", tokenRow.license_id, tokenRow.id);
+    return deny(
+      403,
+      "Download link has expired.",
+      "download_token_expired",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   }
   if (tokenRow.single_use && tokenRow.used_at) {
-    return deny(403, "Download link has already been used.", "download_token_replayed", tokenRow.license_id, tokenRow.id);
+    return deny(
+      403,
+      "Download link has already been used.",
+      "download_token_replayed",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   }
 
-  const { data: license } = await db.from("licenses").select("id, status, expires_at").eq("id", tokenRow.license_id).maybeSingle();
+  const { data: license } = await db
+    .from("licenses")
+    .select("id, status, expires_at")
+    .eq("id", tokenRow.license_id)
+    .maybeSingle();
   if (!license || license.status !== "active") {
-    return deny(403, "License is not active.", "download_license_not_active", tokenRow.license_id, tokenRow.id);
+    return deny(
+      403,
+      "License is not active.",
+      "download_license_not_active",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   }
 
   const { data: release } = await db
     .from("license_releases")
-    .select("id, version, artifact_path, checksum_sha256, status, signature, build_id, release_ref, signing_key_id")
+    .select(
+      "id, version, artifact_path, checksum_sha256, status, signature, build_id, release_ref, signing_key_id",
+    )
     .eq("id", tokenRow.release_id)
     .maybeSingle();
   if (!release || release.status !== "published") {
-    return deny(404, "Release is not available.", "download_release_unavailable", tokenRow.license_id, tokenRow.id);
+    return deny(
+      404,
+      "Release is not available.",
+      "download_release_unavailable",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   }
   if (!verifyRelease(release)) {
-    return deny(409, "Release signature check failed.", "release_signature_invalid", tokenRow.license_id, tokenRow.id);
+    return deny(
+      409,
+      "Release signature check failed.",
+      "release_signature_invalid",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
   }
 
-  const { data: signed, error } = await db.storage.from(RELEASE_BUCKET).createSignedUrl(release.artifact_path, 120, { download: true });
-  if (error || !signed) return deny(500, "Could not prepare the download.", "download_storage_error", tokenRow.license_id, tokenRow.id);
+  const { data: signed, error } = await db.storage
+    .from(RELEASE_BUCKET)
+    .createSignedUrl(release.artifact_path, 120, { download: true });
+  if (error || !signed)
+    return deny(
+      500,
+      "Could not prepare the download.",
+      "download_storage_error",
+      tokenRow.license_id,
+      tokenRow.id,
+    );
 
-  await db.from("license_download_tokens").update({ used_at: new Date().toISOString() }).eq("id", tokenRow.id);
-  await db.from("licenses").update({ last_download_at: new Date().toISOString() }).eq("id", license.id);
+  await db
+    .from("license_download_tokens")
+    .update({ used_at: new Date().toISOString() })
+    .eq("id", tokenRow.id);
+  await db
+    .from("licenses")
+    .update({ last_download_at: new Date().toISOString() })
+    .eq("id", license.id);
   await db.from("license_download_events").insert({
     license_id: license.id,
     release_id: release.id,
@@ -271,7 +380,12 @@ export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string 
     result: "downloaded",
   });
 
-  return { ok: true, url: signed.signedUrl, version: release.version, checksum: release.checksum_sha256 };
+  return {
+    ok: true,
+    url: signed.signedUrl,
+    version: release.version,
+    checksum: release.checksum_sha256,
+  };
 }
 
 /* ---------------- release integrity ---------------- */
@@ -319,10 +433,13 @@ const FORBIDDEN_PATTERNS = [
   /(^|\/)id_rsa/i,
   /(^|\/)\.github\//i,
   /(^|\/)supabase\/\.temp/i,
+  /^supabase(\/|$)/i,
   /service[_-]?role/i,
 ];
 
 export function inspectArtifactEntries(entries: string[]) {
-  const violations = entries.filter((entry) => FORBIDDEN_PATTERNS.some((pattern) => pattern.test(entry)));
+  const violations = entries.filter((entry) =>
+    FORBIDDEN_PATTERNS.some((pattern) => pattern.test(entry)),
+  );
   return { passed: violations.length === 0, violations, inspectedEntries: entries.length };
 }

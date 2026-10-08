@@ -21,7 +21,8 @@ export const Route = createFileRoute("/api/public/license/activate")({
           return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
         }
         const body = Body.safeParse(parsed);
-        if (!body.success) return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
+        if (!body.success)
+          return Response.json({ ok: false, result: "bad_request" }, { status: 400 });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { activateInstallation } = await import("@/lib/license/operations.server");
@@ -41,13 +42,20 @@ export const Route = createFileRoute("/api/public/license/activate")({
               status: outcome.result === "rate_limited" ? 429 : 403,
               headers: {
                 "Cache-Control": "no-store",
-                ...(outcome.retryAfterSeconds ? { "Retry-After": String(outcome.retryAfterSeconds) } : {}),
+                ...(outcome.retryAfterSeconds
+                  ? { "Retry-After": String(outcome.retryAfterSeconds) }
+                  : {}),
               },
             },
           );
         }
         return Response.json(
-          { ok: true, installationRef: outcome.installationRef, features: outcome.features, expiresAt: outcome.expiresAt },
+          {
+            ok: true,
+            installationRef: outcome.installationRef,
+            features: outcome.features,
+            expiresAt: outcome.expiresAt,
+          },
           { headers: { "Cache-Control": "no-store" } },
         );
       },

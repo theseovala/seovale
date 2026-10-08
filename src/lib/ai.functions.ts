@@ -16,7 +16,7 @@ async function runGateway(system: string, prompt: string) {
   return runAiText(system, prompt);
 }
 
-async function workspaceIdFor(context: { supabase: any; userId: string }) {
+async function workspaceIdFor(context: import("./backend-types").AuthContext) {
   const { data, error } = await context.supabase
     .from("workspace_members")
     .select("workspace_id")
@@ -30,7 +30,7 @@ async function workspaceIdFor(context: { supabase: any; userId: string }) {
 }
 
 async function runAudited(
-  context: { supabase: any; userId: string },
+  context: import("./backend-types").AuthContext,
   purpose: "reply_draft" | "feedback_briefing" | "reputation_report",
   system: string,
   prompt: string,

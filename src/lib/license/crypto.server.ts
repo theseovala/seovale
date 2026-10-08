@@ -3,7 +3,14 @@
  * Nothing here may be imported from browser code: every secret is read from
  * the server environment and no raw secret is ever returned to a client.
  */
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual, webcrypto } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+  webcrypto,
+} from "node:crypto";
 
 function requireSecret(name: string) {
   const value = process.env[name];
@@ -33,7 +40,9 @@ export function safeEqual(a: string, b: string) {
 
 export function signPayload(payload: Record<string, unknown>) {
   const canonical = JSON.stringify(payload, Object.keys(payload).sort());
-  return createHmac("sha256", requireSecret("LICENSE_SIGNING_SECRET")).update(canonical).digest("base64url");
+  return createHmac("sha256", requireSecret("LICENSE_SIGNING_SECRET"))
+    .update(canonical)
+    .digest("base64url");
 }
 
 export function verifyPayload(payload: Record<string, unknown>, signature: string) {
@@ -57,7 +66,11 @@ const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 
 export async function encryptSecret(value: string) {
   const iv = randomBytes(12);
-  const encrypted = await webcrypto.subtle.encrypt({ name: "AES-GCM", iv }, await mfaKey(), new TextEncoder().encode(value));
+  const encrypted = await webcrypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    await mfaKey(),
+    new TextEncoder().encode(value),
+  );
   return `${b64(iv)}.${b64(new Uint8Array(encrypted))}`;
 }
 
@@ -121,7 +134,10 @@ function totpAt(secret: string, counter: number) {
   const digest = createHmac("sha1", base32Decode(secret)).update(buffer).digest();
   const offset = digest[digest.length - 1]! & 0x0f;
   const binary =
-    ((digest[offset]! & 0x7f) << 24) | ((digest[offset + 1]! & 0xff) << 16) | ((digest[offset + 2]! & 0xff) << 8) | (digest[offset + 3]! & 0xff);
+    ((digest[offset]! & 0x7f) << 24) |
+    ((digest[offset + 1]! & 0xff) << 16) |
+    ((digest[offset + 2]! & 0xff) << 8) |
+    (digest[offset + 3]! & 0xff);
   return String(binary % 1_000_000).padStart(6, "0");
 }
 

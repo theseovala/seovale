@@ -3,7 +3,33 @@
 // when a source cannot be reached or is not configured, that is reported
 // honestly and the raw provider payload is stored untouched.
 
-export type SourceStatus = "completed" | "failed" | "skipped" | "not_configured";
+import { record } from "../backend-types";
+
+export type SourceStatus =
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "not_configured"
+  | "auth_required"
+  | "not_supported"
+  | "unavailable"
+  | "approval_required";
+
+export function sourceStatus(value: string): SourceStatus {
+  switch (value) {
+    case "completed":
+    case "failed":
+    case "skipped":
+    case "not_configured":
+    case "auth_required":
+    case "not_supported":
+    case "unavailable":
+    case "approval_required":
+      return value;
+    default:
+      return "failed";
+  }
+}
 
 export interface SourceResult {
   source: string;
@@ -25,7 +51,11 @@ async function timed<T>(fn: () => Promise<T>) {
     const value = await fn();
     return { value, durationMs: Date.now() - started, error: null as Error | null };
   } catch (caught) {
-    return { value: null as T | null, durationMs: Date.now() - started, error: caught instanceof Error ? caught : new Error(String(caught)) };
+    return {
+      value: null as T | null,
+      durationMs: Date.now() - started,
+      error: caught instanceof Error ? caught : new Error(String(caught)),
+    };
   }
 }
 
@@ -66,7 +96,10 @@ async function resolveHost(hostname: string): Promise<string[]> {
   for (const type of ["A", "AAAA"]) {
     const response = await fetch(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=${type}`,
-      { headers: { accept: "application/dns-json", "user-agent": UA }, signal: AbortSignal.timeout(8_000) },
+      {
+        headers: { accept: "application/dns-json", "user-agent": UA },
+        signal: AbortSignal.timeout(8_000),
+      },
     );
     if (!response.ok) continue;
     const payload = (await response.json()) as { Answer?: Array<{ type: number; data: string }> };
@@ -90,9 +123,12 @@ export async function assertPublicTarget(rawUrl: string) {
   } catch {
     throw new Error("That address could not be read as a website address.");
   }
-  if (!/^https?:$/.test(url.protocol)) throw new Error("Only http and https addresses can be scanned.");
-  if (url.username || url.password) throw new Error("Addresses containing a username or password cannot be scanned.");
-  if (url.port && url.port !== "80" && url.port !== "443") throw new Error("Only the standard web ports 80 and 443 can be scanned.");
+  if (!/^https?:$/.test(url.protocol))
+    throw new Error("Only http and https addresses can be scanned.");
+  if (url.username || url.password)
+    throw new Error("Addresses containing a username or password cannot be scanned.");
+  if (url.port && url.port !== "80" && url.port !== "443")
+    throw new Error("Only the standard web ports 80 and 443 can be scanned.");
 
   const host = url.hostname.toLowerCase().replace(/\.$/, "");
   if (TRUSTED_HOSTS.has(host)) return url;
@@ -102,11 +138,13 @@ export async function assertPublicTarget(rawUrl: string) {
   if (host === "localhost" || /(^|\.)(local|internal|localdomain|home|lan|localhost)$/.test(host)) {
     throw new Error("Internal network addresses cannot be scanned.");
   }
-  if (isPrivateAddress(host.replace(/^\[|\]$/g, ""))) throw new Error("Private network addresses cannot be scanned.");
+  if (isPrivateAddress(host.replace(/^\[|\]$/g, "")))
+    throw new Error("Private network addresses cannot be scanned.");
 
   const addresses = await resolveHost(host);
   if (addresses.length === 0) throw new Error("That domain name could not be resolved.");
-  if (addresses.some(isPrivateAddress)) throw new Error("That domain points at a private network address and cannot be scanned.");
+  if (addresses.some(isPrivateAddress))
+    throw new Error("That domain points at a private network address and cannot be scanned.");
   return url;
 }
 
@@ -146,12 +184,18 @@ async function request(url: string, init: RequestInit = {}) {
  * the person actually meant. They are refused with an explanation instead.
  */
 const LISTING_HOSTS: { pattern: RegExp; label: string }[] = [
-  { pattern: /^(share\.google|goo\.gl|maps\.app\.goo\.gl|g\.page|maps\.google\.[a-z.]+)$/i, label: "Google Maps or Google review" },
+  {
+    pattern: /^(share\.google|goo\.gl|maps\.app\.goo\.gl|g\.page|maps\.google\.[a-z.]+)$/i,
+    label: "Google Maps or Google review",
+  },
   { pattern: /^(www\.)?google\.[a-z.]+$/i, label: "Google" },
   { pattern: /^(www\.)?(facebook|fb)\.com$/i, label: "Facebook" },
   { pattern: /^(www\.)?instagram\.com$/i, label: "Instagram" },
   { pattern: /^(www\.)?(twitter|x)\.com$/i, label: "X" },
-  { pattern: /^(www\.)?(yelp|tripadvisor|trustpilot|justdial|glassdoor|indeed)\.[a-z.]+$/i, label: "review site" },
+  {
+    pattern: /^(www\.)?(yelp|tripadvisor|trustpilot|justdial|glassdoor|indeed)\.[a-z.]+$/i,
+    label: "review site",
+  },
   { pattern: /^(bit\.ly|tinyurl\.com|t\.co|lnkd\.in)$/i, label: "shortened" },
 ];
 
@@ -160,7 +204,9 @@ function assertScannableHost(hostname: string) {
   const hit = LISTING_HOSTS.find((entry) => entry.pattern.test(host));
   if (!hit) return;
   if (hit.label === "shortened") {
-    throw new Error("Shortened links cannot be scanned. Enter the business website address itself, for example seovale.com");
+    throw new Error(
+      "Shortened links cannot be scanned. Enter the business website address itself, for example seovale.com",
+    );
   }
   throw new Error(
     `That is a ${hit.label} link, not a business website, so scanning it would describe ${host} instead of the business. ` +
@@ -177,12 +223,12 @@ export function normalizeTarget(input: string) {
   } catch {
     throw new Error("Enter a valid website address, for example seovale.com");
   }
-  if (!url.hostname.includes(".")) throw new Error("Enter a valid website address, for example seovale.com");
+  if (!url.hostname.includes("."))
+    throw new Error("Enter a valid website address, for example seovale.com");
   assertScannableHost(url.hostname);
   url.hash = "";
   return { url: url.toString(), domain: url.hostname.replace(/^www\./i, ""), origin: url.origin };
 }
-
 
 /** Loads the page itself: status, redirects, timing, response headers and HTML. */
 export async function collectPage(url: string): Promise<SourceResult> {
@@ -213,7 +259,7 @@ export async function collectPage(url: string): Promise<SourceResult> {
     status: "completed",
     httpStatus: run.value.httpStatus,
     durationMs: run.durationMs,
-    raw: run.value as unknown as Record<string, unknown>,
+    raw: record(run.value),
   };
 }
 
@@ -244,7 +290,7 @@ export async function collectTls(origin: string): Promise<SourceResult> {
     status: "completed",
     httpStatus: run.value.httpStatus,
     durationMs: run.durationMs,
-    raw: run.value as unknown as Record<string, unknown>,
+    raw: record(run.value),
   };
 }
 
@@ -254,9 +300,12 @@ export async function collectDns(domain: string): Promise<SourceResult> {
   const run = await timed(async () => {
     const records: Record<string, string[]> = {};
     for (const type of types) {
-      const response = await request(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`, {
-        headers: { accept: "application/dns-json" },
-      });
+      const response = await request(
+        `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${type}`,
+        {
+          headers: { accept: "application/dns-json" },
+        },
+      );
       if (!response.ok) throw new Error(`Cloudflare DNS returned HTTP ${response.status}`);
       const body = (await response.json()) as { Answer?: { data: string }[] };
       records[type] = (body.Answer ?? []).map((answer) => answer.data);
@@ -264,28 +313,50 @@ export async function collectDns(domain: string): Promise<SourceResult> {
     return records;
   });
   if (run.error || !run.value) {
-    return { source: "dns", provider: "cloudflare-doh", status: "failed", durationMs: run.durationMs, errorMessage: run.error?.message ?? null, raw: {} };
+    return {
+      source: "dns",
+      provider: "cloudflare-doh",
+      status: "failed",
+      durationMs: run.durationMs,
+      errorMessage: run.error?.message ?? null,
+      raw: {},
+    };
   }
-  return { source: "dns", provider: "cloudflare-doh", status: "completed", durationMs: run.durationMs, raw: run.value };
+  return {
+    source: "dns",
+    provider: "cloudflare-doh",
+    status: "completed",
+    durationMs: run.durationMs,
+    raw: run.value,
+  };
 }
 
 /** Domain registration data from the public RDAP bootstrap service. */
 export async function collectRdap(domain: string): Promise<SourceResult> {
   const run = await timed(async () => {
-    const response = await request(`https://rdap.org/domain/${encodeURIComponent(domain)}`, { headers: { accept: "application/rdap+json" } });
+    const response = await request(`https://rdap.org/domain/${encodeURIComponent(domain)}`, {
+      headers: { accept: "application/rdap+json" },
+    });
     if (response.status === 404) return { found: false, httpStatus: 404 };
     if (!response.ok) throw new Error(`RDAP returned HTTP ${response.status}`);
     const body = (await response.json()) as Record<string, unknown>;
     return { found: true, httpStatus: response.status, body };
   });
   if (run.error || !run.value) {
-    return { source: "rdap", provider: "rdap.org", status: "failed", durationMs: run.durationMs, errorMessage: run.error?.message ?? null, raw: {} };
+    return {
+      source: "rdap",
+      provider: "rdap.org",
+      status: "failed",
+      durationMs: run.durationMs,
+      errorMessage: run.error?.message ?? null,
+      raw: {},
+    };
   }
   return {
     source: "rdap",
     provider: "rdap.org",
     status: "completed",
-    httpStatus: (run.value as any).httpStatus ?? null,
+    httpStatus: run.value.httpStatus ?? null,
     durationMs: run.durationMs,
     raw: run.value as Record<string, unknown>,
   };
@@ -297,7 +368,9 @@ export async function collectCrawlDirectives(origin: string): Promise<SourceResu
     const robots = await request(`${origin}/robots.txt`);
     const robotsText = robots.ok ? (await robots.text()).slice(0, 20_000) : null;
     const declared = robotsText
-      ? Array.from(robotsText.matchAll(/^\s*sitemap:\s*(\S+)/gim)).map((match) => match[1] as string)
+      ? Array.from(robotsText.matchAll(/^\s*sitemap:\s*(\S+)/gim)).map(
+          (match) => match[1] as string,
+        )
       : [];
     const sitemapUrl = declared[0] ?? `${origin}/sitemap.xml`;
     let sitemap: { url: string; httpStatus: number; urlCount: number | null } | null = null;
@@ -312,12 +385,31 @@ export async function collectCrawlDirectives(origin: string): Promise<SourceResu
     } catch {
       sitemap = null;
     }
-    return { robotsStatus: robots.status, robotsFound: robots.ok, robotsText, declaredSitemaps: declared, sitemap };
+    return {
+      robotsStatus: robots.status,
+      robotsFound: robots.ok,
+      robotsText,
+      declaredSitemaps: declared,
+      sitemap,
+    };
   });
   if (run.error || !run.value) {
-    return { source: "crawl_directives", provider: null, status: "failed", durationMs: run.durationMs, errorMessage: run.error?.message ?? null, raw: {} };
+    return {
+      source: "crawl_directives",
+      provider: null,
+      status: "failed",
+      durationMs: run.durationMs,
+      errorMessage: run.error?.message ?? null,
+      raw: {},
+    };
   }
-  return { source: "crawl_directives", provider: null, status: "completed", durationMs: run.durationMs, raw: run.value as Record<string, unknown> };
+  return {
+    source: "crawl_directives",
+    provider: null,
+    status: "completed",
+    durationMs: run.durationMs,
+    raw: run.value as Record<string, unknown>,
+  };
 }
 
 /** robots.txt Disallow rules that apply to our user-agent (or to *). */
@@ -394,7 +486,9 @@ export async function collectCrawl(
       for (const item of results) {
         if (!item) continue;
         const { pageUrl, response, html, durationMs } = item;
-        const links = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map((m) => m[1] as string);
+        const links = Array.from(html.matchAll(/href=["']([^"'#]+)["']/gi)).map(
+          (m) => m[1] as string,
+        );
         let internal = 0;
         let external = 0;
         for (const href of links) {
@@ -425,11 +519,20 @@ export async function collectCrawl(
           redirected: Boolean(response.url) && response.url !== pageUrl,
           durationMs,
           title: html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() ?? null,
-          description: html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([\s\S]*?)["']/i)?.[1]?.trim() ?? null,
-          canonical: html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] ?? null,
+          description:
+            html
+              .match(/<meta[^>]+name=["']description["'][^>]+content=["']([\s\S]*?)["']/i)?.[1]
+              ?.trim() ?? null,
+          canonical:
+            html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)?.[1] ?? null,
           h1Count: (html.match(/<h1[\s>]/gi) ?? []).length,
           noindex: /name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(html),
-          wordCount: html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").split(/\s+/).filter((w) => w.length > 1).length,
+          wordCount: html
+            .replace(/<script[\s\S]*?<\/script>/gi, " ")
+            .replace(/<style[\s\S]*?<\/style>/gi, " ")
+            .replace(/<[^>]+>/g, " ")
+            .split(/\s+/)
+            .filter((w) => w.length > 1).length,
           internalLinks: internal,
           externalLinks: external,
           images: imgs.length,
@@ -450,7 +553,11 @@ export async function collectCrawl(
           const response = await request(url, { method: "HEAD" });
           return { url, httpStatus: response.status };
         } catch (caught) {
-          return { url, httpStatus: 0, error: caught instanceof Error ? caught.message : String(caught) };
+          return {
+            url,
+            httpStatus: 0,
+            error: caught instanceof Error ? caught.message : String(caught),
+          };
         }
       }),
     );
@@ -490,7 +597,9 @@ export async function collectCrawl(
 
 /** Business identity as published by the site itself (JSON-LD + visible contacts). */
 export function extractIdentity(html: string) {
-  const blocks = Array.from(html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)).map((m) => m[1] as string);
+  const blocks = Array.from(
+    html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi),
+  ).map((m) => m[1] as string);
   let name: string | null = null;
   let phone: string | null = null;
   let address: string | null = null;
@@ -498,28 +607,44 @@ export function extractIdentity(html: string) {
   let category: string | null = null;
   const sameAs: string[] = [];
   for (const block of blocks) {
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(block.trim());
     } catch {
       continue;
     }
-    const nodes: any[] = Array.isArray(parsed) ? parsed : parsed?.["@graph"] ? parsed["@graph"] : [parsed];
-    for (const node of nodes) {
-      if (!node || typeof node !== "object") continue;
+    const graph = record(parsed)["@graph"];
+    const nodes: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(graph)
+        ? graph
+        : [parsed];
+    for (const value of nodes) {
+      const node = record(value);
       const type = String(node["@type"] ?? "");
-      if (!/Organization|LocalBusiness|Store|Restaurant|Hotel|Corporation|WebSite/i.test(type)) continue;
-      name ??= typeof node.name === "string" ? node.name : null;
-      phone ??= typeof node.telephone === "string" ? node.telephone : null;
-      website ??= typeof node.url === "string" ? node.url : null;
+      if (!/Organization|LocalBusiness|Store|Restaurant|Hotel|Corporation|WebSite/i.test(type))
+        continue;
+      name ??= typeof node["name"] === "string" ? node["name"] : null;
+      phone ??= typeof node["telephone"] === "string" ? node["telephone"] : null;
+      website ??= typeof node["url"] === "string" ? node["url"] : null;
       category ??= /LocalBusiness|Store|Restaurant|Hotel/i.test(type) ? type : category;
-      if (node.address && typeof node.address === "object") {
-        const parts = [node.address.streetAddress, node.address.addressLocality, node.address.postalCode, node.address.addressCountry]
-          .filter((part: unknown) => typeof part === "string");
+      if (node["address"] && typeof node["address"] === "object") {
+        const addressNode = record(node["address"]);
+        const parts = [
+          addressNode["streetAddress"],
+          addressNode["addressLocality"],
+          addressNode["postalCode"],
+          addressNode["addressCountry"],
+        ].filter((part: unknown) => typeof part === "string");
         if (parts.length) address ??= parts.join(", ");
-      } else if (typeof node.address === "string") address ??= node.address;
-      const links = Array.isArray(node.sameAs) ? node.sameAs : typeof node.sameAs === "string" ? [node.sameAs] : [];
-      for (const link of links) if (typeof link === "string" && !sameAs.includes(link)) sameAs.push(link);
+      } else if (typeof node["address"] === "string") address ??= node["address"];
+      const links = Array.isArray(node["sameAs"])
+        ? node["sameAs"]
+        : typeof node["sameAs"] === "string"
+          ? [node["sameAs"]]
+          : [];
+      for (const link of links)
+        if (typeof link === "string" && !sameAs.includes(link)) sameAs.push(link);
     }
   }
   if (!phone) {
@@ -528,7 +653,6 @@ export function extractIdentity(html: string) {
   }
   return { name, phone, address, website, category, sameAs };
 }
-
 
 /**
  * Google PageSpeed Insights (Lighthouse). Requires a real Google API key from
@@ -551,30 +675,45 @@ export async function collectPageSpeed(url: string, apiKey: string | null): Prom
     `&strategy=mobile&category=performance&category=seo&category=accessibility&category=best-practices&key=${encodeURIComponent(apiKey)}`;
   const run = await timed(async () => {
     const response = await request(endpoint);
-    const body = (await response.json()) as any;
-    if (!response.ok) throw new Error(body?.error?.message ?? `PageSpeed returned HTTP ${response.status}`);
-    const categories = body?.lighthouseResult?.categories ?? {};
-    const audits = body?.lighthouseResult?.audits ?? {};
+    const body = record(await response.json());
+    if (!response.ok)
+      throw new Error(
+        String(record(body["error"])["message"] ?? `PageSpeed returned HTTP ${response.status}`),
+      );
+    const lighthouse = record(body["lighthouseResult"]);
+    const categories = record(lighthouse["categories"]);
+    const audits = record(lighthouse["audits"]);
+    const numeric = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value) ? value : null;
     return {
       httpStatus: response.status,
-      categories: Object.fromEntries(Object.entries(categories).map(([key, value]: [string, any]) => [key, value?.score ?? null])),
+      categories: Object.fromEntries(
+        Object.entries(categories).map(([key, value]) => [key, numeric(record(value)["score"])]),
+      ),
       metrics: {
-        firstContentfulPaint: audits["first-contentful-paint"]?.numericValue ?? null,
-        largestContentfulPaint: audits["largest-contentful-paint"]?.numericValue ?? null,
-        totalBlockingTime: audits["total-blocking-time"]?.numericValue ?? null,
-        cumulativeLayoutShift: audits["cumulative-layout-shift"]?.numericValue ?? null,
-        speedIndex: audits["speed-index"]?.numericValue ?? null,
+        firstContentfulPaint: numeric(record(audits["first-contentful-paint"])["numericValue"]),
+        largestContentfulPaint: numeric(record(audits["largest-contentful-paint"])["numericValue"]),
+        totalBlockingTime: numeric(record(audits["total-blocking-time"])["numericValue"]),
+        cumulativeLayoutShift: numeric(record(audits["cumulative-layout-shift"])["numericValue"]),
+        speedIndex: numeric(record(audits["speed-index"])["numericValue"]),
       },
     };
   });
   if (run.error || !run.value) {
-    return { source: "pagespeed", provider: "google_pagespeed", status: "failed", durationMs: run.durationMs, errorMessage: run.error?.message ?? null, raw: {} };
+    return {
+      source: "pagespeed",
+      provider: "google_pagespeed",
+      status: "failed",
+      durationMs: run.durationMs,
+      errorMessage: run.error?.message ?? null,
+      raw: {},
+    };
   }
   return {
     source: "pagespeed",
     provider: "google_pagespeed",
     status: "completed",
-    httpStatus: (run.value as any).httpStatus ?? null,
+    httpStatus: run.value.httpStatus ?? null,
     durationMs: run.durationMs,
     raw: run.value as Record<string, unknown>,
   };

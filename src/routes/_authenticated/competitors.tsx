@@ -1,8 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, Legend } from "recharts";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RTooltip,
+  Legend,
+} from "recharts";
 import { Swords, Info, Loader2 } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
-import { PageHeader, Section, Stars, Trend, StatCard, EmptyState } from "@/components/app/primitives";
+import {
+  PageHeader,
+  Section,
+  Stars,
+  Trend,
+  StatCard,
+  EmptyState,
+} from "@/components/app/primitives";
 import { useCompetitors, useLiveReviews } from "@/lib/seovale-db";
 import { monthlyTrend } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
@@ -49,8 +65,8 @@ function CompetitorsPage() {
       <div className="mb-4 flex items-start gap-3 rounded-xl border border-dashed bg-info-soft/60 p-4 text-sm">
         <Info className="mt-0.5 size-4 shrink-0 text-info" />
         <p className="text-muted-foreground">
-          Competitor figures come from the competitors you track. Seovale benchmarks only data you or your
-          team have entered, and never claims access to a competitor&apos;s private systems.
+          Competitor figures come from the competitors you track. Seovale benchmarks only data you
+          or your team have entered, and never claims access to a competitor&apos;s private systems.
         </p>
       </div>
 
@@ -59,12 +75,28 @@ function CompetitorsPage() {
           <Loader2 className="size-5 animate-spin" />
         </div>
       ) : !competitors || competitors.length === 0 ? (
-        <EmptyState icon={Swords} title="No competitors tracked yet" description="Add competitors from the database to see benchmarks here." />
+        <EmptyState
+          icon={Swords}
+          title="No competitors tracked yet"
+          description="Add competitors from the database to see benchmarks here."
+        />
       ) : (
         <>
           <div className="stagger mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Category rank" value={you ? `#${rank} of ${competitors.length}` : "—"} sub="By reputation score" icon={Swords} tone="primary" />
-            <StatCard label="Your score" value={you?.score ?? "—"} sub={`Category average ${category}`} {...(you ? { trend: you.trend } : {})} tone="positive" />
+            <StatCard
+              label="Category rank"
+              value={you ? `#${rank} of ${competitors.length}` : "—"}
+              sub="By reputation score"
+              icon={Swords}
+              tone="primary"
+            />
+            <StatCard
+              label="Your score"
+              value={you?.score ?? "—"}
+              sub={`Category average ${category}`}
+              {...(you ? { trend: you.trend } : {})}
+              tone="positive"
+            />
             <StatCard
               label="Rating gap vs leader"
               value={you && leader ? `${(you.rating - leader.rating).toFixed(1)}★` : "—"}
@@ -73,28 +105,66 @@ function CompetitorsPage() {
             />
             <StatCard
               label="Response advantage"
-              value={you ? `${you.responseRate - Math.round(competitors.filter((c) => !c.you).reduce((s, c) => s + c.responseRate, 0) / Math.max(1, competitors.filter((c) => !c.you).length))}pts` : "—"}
+              value={
+                you
+                  ? `${you.responseRate - Math.round(competitors.filter((c) => !c.you).reduce((s, c) => s + c.responseRate, 0) / Math.max(1, competitors.filter((c) => !c.you).length))}pts`
+                  : "—"
+              }
               sub={you ? `Your ${you.responseRate}% vs category` : "No data"}
               tone="positive"
             />
           </div>
 
-          <Section className="mb-4" title="Your reputation score over time" description="Based on your own review history">
+          <Section
+            className="mb-4"
+            title="Your reputation score over time"
+            description="Based on your own review history"
+          >
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={ourTrend} margin={{ left: -22, right: 8, top: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                  <YAxis domain={[0, 100]} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                  <RTooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <RTooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                  />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="monotone" dataKey="you" name="Your brand" stroke="var(--chart-1)" strokeWidth={3} dot={false} />
+                  <Line
+                    type="monotone"
+                    dataKey="you"
+                    name="Your brand"
+                    stroke="var(--chart-1)"
+                    strokeWidth={3}
+                    dot={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </Section>
 
-          <Section title="Head-to-head" description="Reputation score, rating, volume, sentiment and response rate" bodyClassName="p-0">
+          <Section
+            title="Head-to-head"
+            description="Reputation score, rating, volume, sentiment and response rate"
+            bodyClassName="p-0"
+          >
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
                 <thead>
@@ -110,28 +180,55 @@ function CompetitorsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {sorted.map((c) => (
-                    <tr key={c.id} className={cn("transition-colors hover:bg-accent/40", c.you && "bg-accent/60")}>
+                    <tr
+                      key={c.id}
+                      className={cn(
+                        "transition-colors hover:bg-accent/40",
+                        c.you && "bg-accent/60",
+                      )}
+                    >
                       <td className="px-5 py-3">
                         <span className="flex items-center gap-2 font-semibold">
-                          <span className={cn("grid size-8 place-items-center rounded-lg font-display text-xs font-bold", c.you ? "bg-gradient-brand text-primary-foreground" : "bg-secondary text-secondary-foreground")}>
-                            {c.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                          <span
+                            className={cn(
+                              "grid size-8 place-items-center rounded-lg font-display text-xs font-bold",
+                              c.you
+                                ? "bg-gradient-brand text-primary-foreground"
+                                : "bg-secondary text-secondary-foreground",
+                            )}
+                          >
+                            {c.name
+                              .split(" ")
+                              .map((w) => w[0])
+                              .join("")
+                              .slice(0, 2)}
                           </span>
                           {c.name}
                         </span>
                       </td>
                       <td className="px-5 py-3 font-display font-bold tabular-nums">{c.score}</td>
-                      <td className="px-5 py-3"><span className="flex items-center gap-2"><span className="tabular-nums">{c.rating}</span><Stars value={c.rating} size={11} /></span></td>
+                      <td className="px-5 py-3">
+                        <span className="flex items-center gap-2">
+                          <span className="tabular-nums">{c.rating}</span>
+                          <Stars value={c.rating} size={11} />
+                        </span>
+                      </td>
                       <td className="px-5 py-3 tabular-nums">{c.reviews.toLocaleString()}</td>
                       <td className="px-5 py-3">
                         <span className="flex items-center gap-2">
                           <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-                            <span className="block h-full rounded-full bg-positive" style={{ width: `${c.sentiment}%` }} />
+                            <span
+                              className="block h-full rounded-full bg-positive"
+                              style={{ width: `${c.sentiment}%` }}
+                            />
                           </span>
                           <span className="text-xs font-semibold tabular-nums">{c.sentiment}%</span>
                         </span>
                       </td>
                       <td className="px-5 py-3 tabular-nums">{c.responseRate}%</td>
-                      <td className="px-5 py-3"><Trend value={c.trend} suffix="" /></td>
+                      <td className="px-5 py-3">
+                        <Trend value={c.trend} suffix="" />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

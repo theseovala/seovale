@@ -69,3 +69,43 @@ bash scripts/deploy-vps.sh --deploy <full-commit-sha>
 ```
 
 Successful releases expose `x-seovale-commit` for runtime provenance checks.
+
+The reviewed receiver [scripts/vps-webhook.mjs](scripts/vps-webhook.mjs) preserves
+signature/repository/main checks, rejects invalid commits and logs deployment
+failures. Install it at `/opt/seovale-hook/server.mjs` with the existing service
+secret. Install `run-vps-release.sh` and `deploy-vps.sh` in `/opt/seovale-deploy/`.
+The runner fetches main and refuses stale webhook commits; it never resets the
+checkout. A 202 response means accepted, not successfully deployed. Feature
+branches do not deploy. The real Google gate remains mandatory.
+
+## Private release storage
+
+Apply the private release-storage migration before packaging. The existing
+project requires a `license-releases` bucket with `public=false`; no public
+object policy is needed. Uploads and signed-download authorization use the
+server service credential, and sensitive Licensing actions retain their MFA
+checks. Do not make the bucket public to work around access errors.
+
+`node scripts/package-release.mjs <version> [buildId]` verifies the private
+bucket before creating an artifact. It excludes root migrations and secrets,
+retains the application's Supabase client source, and removes its temporary
+stage even if upload fails. Packaging does not publish or sign a release.
+
+## Frontend and validation
+
+Settings tabs are shareable through `?tab=account` (and the other supported
+tabs); browser history and reload restore the selected panel. Original coin
+artwork is bundled by Vite rather than relying on Lovable-only asset routes.
+For clients still running an older build, `nginx-brand-assets.conf` serves the
+two original versioned artwork URLs from `/opt/seovale-static/`. Include the
+snippet in this site's HTTPS server only. This asset-only compatibility repair
+does not deploy application code or bypass its real Google acceptance gate.
+
+Run the local quality gates: frozen Bun installation, TypeScript, tests, full
+ESLint and a Node-target production build. LF checkout rules keep Windows
+formatting consistent. The reviewed GitHub Actions workflow is preserved on the
+local `fix/reaudit-other-modules-20261008` branch; GitHub refused its publication
+because the existing OAuth credential lacks the `workflow` scope. It requires
+account authorization before CI can be installed. Runtime fixes are published
+separately without changing authentication permissions. CI/unit tests do not
+establish live provider, payment, review-publishing or licensed-download acceptance.

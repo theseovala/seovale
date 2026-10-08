@@ -88,7 +88,10 @@ function Dashboard() {
   const platformStats = platformPerformance(reviews);
   const locStats = locationStats(allReviews ?? []);
   const recent = [...reviews]
-    .sort((a, b) => new Date(b.external_created_at).getTime() - new Date(a.external_created_at).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.external_created_at).getTime() - new Date(a.external_created_at).getTime(),
+    )
     .slice(0, 4);
   const connectedCount = (connectedPlatforms ?? []).filter((p) => p.status === "connected").length;
 
@@ -141,39 +144,46 @@ function Dashboard() {
           <div className="card-elevated bg-gradient-hero p-6 text-primary-foreground md:p-8">
             {summary.total === 0 ? (
               <div className="flex min-h-48 flex-col justify-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">Verified data only</p>
-                <h2 className="mt-2 font-display text-2xl font-bold md:text-3xl">Real data unavailable</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
+                  Verified data only
+                </p>
+                <h2 className="mt-2 font-display text-2xl font-bold md:text-3xl">
+                  Real data unavailable
+                </h2>
                 <p className="mt-2 max-w-lg text-sm text-primary-foreground/80">
-                  Connect and sync a review platform to calculate your real reputation score, alerts and trends.
+                  Connect and sync a review platform to calculate your real reputation score, alerts
+                  and trends.
                 </p>
               </div>
             ) : (
-            <div className="flex flex-col items-center gap-7 md:flex-row md:items-center">
-              <div className="rounded-full bg-white/5 p-2 backdrop-blur">
-                <ScoreRing score={summary.score} />
-              </div>
-              <div className="min-w-0 flex-1 text-center md:text-left">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
-                  Reputation health · {summary.band}
-                </p>
-                <h2 className="mt-1 font-display text-2xl font-bold md:text-3xl">{summary.headline}</h2>
-                <p className="mt-2 max-w-lg text-sm text-primary-foreground/80">
-                  {summary.total.toLocaleString()} reviews tracked with an average rating of{" "}
-                  {summary.avgRating}★ and a {summary.responseRate}% response rate.
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
-                  <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
-                    {summary.total.toLocaleString()} reviews tracked
-                  </span>
-                  <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
-                    {connectedCount} platforms connected
-                  </span>
-                  <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
-                    {locStats.length} locations
-                  </span>
+              <div className="flex flex-col items-center gap-7 md:flex-row md:items-center">
+                <div className="rounded-full bg-white/5 p-2 backdrop-blur">
+                  <ScoreRing score={summary.score} />
+                </div>
+                <div className="min-w-0 flex-1 text-center md:text-left">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
+                    Reputation health · {summary.band}
+                  </p>
+                  <h2 className="mt-1 font-display text-2xl font-bold md:text-3xl">
+                    {summary.headline}
+                  </h2>
+                  <p className="mt-2 max-w-lg text-sm text-primary-foreground/80">
+                    {summary.total.toLocaleString()} reviews tracked with an average rating of{" "}
+                    {summary.avgRating}★ and a {summary.responseRate}% response rate.
+                  </p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 md:justify-start">
+                    <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
+                      {summary.total.toLocaleString()} reviews tracked
+                    </span>
+                    <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
+                      {connectedCount} platforms connected
+                    </span>
+                    <span className="rounded-full bg-white/12 px-3 py-1 text-xs font-semibold backdrop-blur">
+                      {locStats.length} locations
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </div>
 
@@ -191,17 +201,28 @@ function Dashboard() {
           >
             {summary.total === 0 ? (
               <div className="p-5">
-                <EmptyState icon={ShieldAlert} title="No verified review data" description="Alerts begin after real reviews are synced." />
+                <EmptyState
+                  icon={ShieldAlert}
+                  title="No verified review data"
+                  description="Alerts begin after real reviews are synced."
+                />
               </div>
             ) : openAlerts.length === 0 ? (
               <div className="p-5">
-                <EmptyState icon={ShieldAlert} title="No open alerts" description="Everything looks under control right now." />
+                <EmptyState
+                  icon={ShieldAlert}
+                  title="No open alerts"
+                  description="Everything looks under control right now."
+                />
               </div>
             ) : (
               <ul className="divide-y">
                 {openAlerts.slice(0, 4).map((a) => (
                   <li key={a.id}>
-                    <Link to="/alerts" className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-accent/50">
+                    <Link
+                      to="/alerts"
+                      className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-accent/50"
+                    >
                       <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-negative-soft text-negative">
                         <ShieldAlert className="size-4" />
                       </span>
@@ -228,12 +249,37 @@ function Dashboard() {
 
       {/* KPI row */}
       <div className="stagger mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Average rating" value={summary.avgRating || "—"} sub="Across all platforms" trend={ratingTrendVal} icon={Star} tone="rating">
+        <StatCard
+          label="Average rating"
+          value={summary.avgRating || "—"}
+          sub="Across all platforms"
+          trend={ratingTrendVal}
+          icon={Star}
+          tone="rating"
+        >
           <Stars value={summary.avgRating} className="mt-3" />
         </StatCard>
-        <StatCard label="Total reviews" value={summary.total.toLocaleString()} sub={summary.total ? `${summary.sentiment.positive}% positive` : "No verified reviews"} icon={MessagesSquare} tone="primary" />
-        <StatCard label="Response rate" value={summary.total ? `${summary.responseRate}%` : "—"} sub={summary.total ? `${summary.unanswered} unanswered` : "No verified reviews"} icon={Timer} tone="positive" />
-        <StatCard label="Open alerts" value={summary.total ? openAlerts.length : "—"} sub={summary.total ? `${connectedCount} platforms connected` : "No verified reviews"} icon={ShieldAlert} tone="negative" />
+        <StatCard
+          label="Total reviews"
+          value={summary.total.toLocaleString()}
+          sub={summary.total ? `${summary.sentiment.positive}% positive` : "No verified reviews"}
+          icon={MessagesSquare}
+          tone="primary"
+        />
+        <StatCard
+          label="Response rate"
+          value={summary.total ? `${summary.responseRate}%` : "—"}
+          sub={summary.total ? `${summary.unanswered} unanswered` : "No verified reviews"}
+          icon={Timer}
+          tone="positive"
+        />
+        <StatCard
+          label="Open alerts"
+          value={summary.total ? openAlerts.length : "—"}
+          sub={summary.total ? `${connectedCount} platforms connected` : "No verified reviews"}
+          icon={ShieldAlert}
+          tone="negative"
+        />
       </div>
 
       {/* Charts */}
@@ -246,7 +292,11 @@ function Dashboard() {
           {isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : trend.every((m) => m.reviews === 0) ? (
-            <EmptyState icon={MessagesSquare} title="No review history yet" description="Once reviews come in, the trend will appear here." />
+            <EmptyState
+              icon={MessagesSquare}
+              title="No review history yet"
+              description="Once reviews come in, the trend will appear here."
+            />
           ) : (
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -258,10 +308,29 @@ function Dashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                  <YAxis domain={[0, 5]} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <YAxis
+                    domain={[0, 5]}
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
                   <RTooltip {...chartTip} />
-                  <Area type="monotone" dataKey="rating" stroke="var(--chart-2)" strokeWidth={2.5} fill="url(#gRating)" animationDuration={900} />
+                  <Area
+                    type="monotone"
+                    dataKey="rating"
+                    stroke="var(--chart-2)"
+                    strokeWidth={2.5}
+                    fill="url(#gRating)"
+                    animationDuration={900}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -270,39 +339,60 @@ function Dashboard() {
 
         <Section title="Sentiment overview" description="All tracked reviews">
           {summary.total === 0 ? (
-            <EmptyState icon={MessagesSquare} title="No sentiment data" description="Sentiment appears after verified reviews are synced." />
+            <EmptyState
+              icon={MessagesSquare}
+              title="No sentiment data"
+              description="Sentiment appears after verified reviews are synced."
+            />
           ) : (
-          <>
-          <div className="flex items-baseline gap-2">
-            <span className="font-display text-3xl font-bold">{summary.sentiment.positive}%</span>
-            <span className="text-sm text-muted-foreground">positive</span>
-          </div>
-          <SentimentBar
-            positive={summary.sentiment.positive}
-            neutral={summary.sentiment.neutral}
-            negative={summary.sentiment.negative}
-            className="mt-4 h-3"
-          />
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            {(["positive", "neutral", "negative"] as const).map((s) => (
-              <div key={s} className="rounded-lg bg-muted/60 px-2 py-3">
-                <SentimentDot s={s} />
-                <p className="mt-1 font-display text-base font-bold">{summary.sentiment[s]}%</p>
-                <p className="text-[11px] text-muted-foreground">{summary.sentimentCounts[s]} reviews</p>
+            <>
+              <div className="flex items-baseline gap-2">
+                <span className="font-display text-3xl font-bold">
+                  {summary.sentiment.positive}%
+                </span>
+                <span className="text-sm text-muted-foreground">positive</span>
               </div>
-            ))}
-          </div>
-          <div className="mt-5 h-28">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary.distribution} layout="vertical" margin={{ left: -22 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="stars" tickLine={false} axisLine={false} fontSize={11} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}★`} />
-                <RTooltip {...chartTip} cursor={{ fill: "var(--muted)" }} />
-                <Bar dataKey="count" fill="var(--chart-3)" radius={[0, 6, 6, 0]} animationDuration={900} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          </>
+              <SentimentBar
+                positive={summary.sentiment.positive}
+                neutral={summary.sentiment.neutral}
+                negative={summary.sentiment.negative}
+                className="mt-4 h-3"
+              />
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                {(["positive", "neutral", "negative"] as const).map((s) => (
+                  <div key={s} className="rounded-lg bg-muted/60 px-2 py-3">
+                    <SentimentDot s={s} />
+                    <p className="mt-1 font-display text-base font-bold">{summary.sentiment[s]}%</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {summary.sentimentCounts[s]} reviews
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 h-28">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary.distribution} layout="vertical" margin={{ left: -22 }}>
+                    <XAxis type="number" hide />
+                    <YAxis
+                      type="category"
+                      dataKey="stars"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={11}
+                      stroke="var(--muted-foreground)"
+                      tickFormatter={(v) => `${v}★`}
+                    />
+                    <RTooltip {...chartTip} cursor={{ fill: "var(--muted)" }} />
+                    <Bar
+                      dataKey="count"
+                      fill="var(--chart-3)"
+                      radius={[0, 6, 6, 0]}
+                      animationDuration={900}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </>
           )}
         </Section>
       </div>
@@ -312,7 +402,11 @@ function Dashboard() {
         <Section title="Platform performance" bodyClassName="p-0">
           {platformStats.length === 0 ? (
             <div className="p-5">
-              <EmptyState icon={MessagesSquare} title="No platform data" description="Connect a platform to see performance here." />
+              <EmptyState
+                icon={MessagesSquare}
+                title="No platform data"
+                description="Connect a platform to see performance here."
+              />
             </div>
           ) : (
             <ul className="divide-y">
@@ -321,7 +415,9 @@ function Dashboard() {
                   <PlatformIcon id={p.id} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{platforms[p.id].name}</p>
-                    <p className="text-xs text-muted-foreground">{p.reviews.toLocaleString()} reviews · {p.response}% answered</p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.reviews.toLocaleString()} reviews · {p.response}% answered
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="font-display text-sm font-bold">{p.rating}</p>
@@ -335,25 +431,40 @@ function Dashboard() {
 
         <Section
           title="Recent reviews"
-          action={<Button variant="ghost" size="sm" asChild><Link to="/reviews">Open inbox <ChevronRight /></Link></Button>}
+          action={
+            <Button variant="ghost" size="sm" asChild>
+              <Link to="/reviews">
+                Open inbox <ChevronRight />
+              </Link>
+            </Button>
+          }
           bodyClassName="p-0"
         >
           {recent.length === 0 ? (
             <div className="p-5">
-              <EmptyState icon={MessagesSquare} title="No reviews yet" description="New reviews will show up here as they arrive." />
+              <EmptyState
+                icon={MessagesSquare}
+                title="No reviews yet"
+                description="New reviews will show up here as they arrive."
+              />
             </div>
           ) : (
             <ul className="divide-y">
               {recent.map((r) => (
                 <li key={r.id}>
-                  <Link to="/reviews" className="flex gap-3 px-5 py-3.5 transition-colors hover:bg-accent/50">
+                  <Link
+                    to="/reviews"
+                    className="flex gap-3 px-5 py-3.5 transition-colors hover:bg-accent/50"
+                  >
                     <PlatformIcon id={r.platform} size="sm" className="mt-0.5" />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold">{r.author}</span>
                         <Stars value={r.rating} size={11} />
                       </span>
-                      <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">{r.body}</span>
+                      <span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">
+                        {r.body}
+                      </span>
                       <span className="mt-1.5 flex items-center gap-2">
                         <StatusBadge status={r.status} />
                         <span className="text-[11px] text-muted-foreground">{r.date}</span>
@@ -370,7 +481,11 @@ function Dashboard() {
           <Section title="Location snapshot" bodyClassName="p-0">
             {locStats.length === 0 ? (
               <div className="p-5">
-                <EmptyState icon={MessagesSquare} title="No locations yet" description="Add locations to see their score here." />
+                <EmptyState
+                  icon={MessagesSquare}
+                  title="No locations yet"
+                  description="Add locations to see their score here."
+                />
               </div>
             ) : (
               <ul className="divide-y">
@@ -381,7 +496,9 @@ function Dashboard() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold">{l.name}</p>
-                      <p className="text-xs text-muted-foreground">{l.reviews.toLocaleString()} reviews</p>
+                      <p className="text-xs text-muted-foreground">
+                        {l.reviews.toLocaleString()} reviews
+                      </p>
                     </div>
                     <Trend value={l.trend} />
                   </li>
@@ -397,7 +514,9 @@ function Dashboard() {
           <Sparkles className="size-5" />
         </span>
         <div className="flex-1">
-          <h3 className="font-display text-base font-bold">{summary.total ? "What should you do next?" : "Connect your first live source"}</h3>
+          <h3 className="font-display text-base font-bold">
+            {summary.total ? "What should you do next?" : "Connect your first live source"}
+          </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {summary.total
               ? "Follow the Seovale journey: Dashboard → Alert → Review → Analysis → Action → Report. Start with your open alerts, then clear the response queue."
@@ -407,11 +526,21 @@ function Dashboard() {
         <div className="flex flex-wrap gap-2">
           {summary.total ? (
             <>
-              <Button variant="outline" asChild><Link to="/analytics">Analyse trend</Link></Button>
-              <Button asChild><Link to="/alerts">Start with alerts <ArrowRight /></Link></Button>
+              <Button variant="outline" asChild>
+                <Link to="/analytics">Analyse trend</Link>
+              </Button>
+              <Button asChild>
+                <Link to="/alerts">
+                  Start with alerts <ArrowRight />
+                </Link>
+              </Button>
             </>
           ) : (
-            <Button asChild><Link to="/settings">Connect platform <ArrowRight /></Link></Button>
+            <Button asChild>
+              <Link to="/settings">
+                Connect platform <ArrowRight />
+              </Link>
+            </Button>
           )}
         </div>
       </div>

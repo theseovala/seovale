@@ -129,7 +129,9 @@ function AuthPage() {
             ))}
           </ul>
         </div>
-        <p className="text-xs text-primary-foreground/60">{BRAND.name} — {BRAND.tagline}</p>
+        <p className="text-xs text-primary-foreground/60">
+          {BRAND.name} — {BRAND.tagline}
+        </p>
       </div>
 
       <div className="flex items-center justify-center px-5 py-12">
@@ -198,7 +200,13 @@ function AuthPage() {
               {!ready ? "Loading…" : mode === "signin" ? "Sign in" : "Create account"}
             </Button>
             {mode === "signin" && (
-              <Button type="button" variant="link" className="h-auto w-full" disabled={busy} onClick={() => void sendReset()}>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto w-full"
+                disabled={busy}
+                onClick={() => void sendReset()}
+              >
                 Forgot password?
               </Button>
             )}

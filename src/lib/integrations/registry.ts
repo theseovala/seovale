@@ -39,9 +39,24 @@ export interface IntegrationDefinition {
 }
 
 const GOOGLE_OAUTH_FIELDS: CredentialField[] = [
-  { key: "GOOGLE_OAUTH_CLIENT_ID", label: "Client ID", secret: false, placeholder: "1234567890-abc.apps.googleusercontent.com" },
-  { key: "GOOGLE_OAUTH_CLIENT_SECRET", label: "Client secret", secret: true, placeholder: "GOCSPX-..." },
-  { key: "GOOGLE_API_KEY", label: "API key (optional)", secret: true, hint: "Only required for Google API-key endpoints." },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_ID",
+    label: "Client ID",
+    secret: false,
+    placeholder: "1234567890-abc.apps.googleusercontent.com",
+  },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_SECRET",
+    label: "Client secret",
+    secret: true,
+    placeholder: "GOCSPX-...",
+  },
+  {
+    key: "GOOGLE_API_KEY",
+    label: "API key (optional)",
+    secret: true,
+    hint: "Only required for Google API-key endpoints.",
+  },
 ];
 
 const META_FIELDS: CredentialField[] = [
@@ -61,8 +76,18 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.google.com/my-business/content/review-data",
     credentialGroup: "google_business",
     credentialFields: [
-      { key: "GOOGLE_BUSINESS_CLIENT_ID", label: "Client ID", secret: false, placeholder: "...apps.googleusercontent.com" },
-      { key: "GOOGLE_BUSINESS_CLIENT_SECRET", label: "Client secret", secret: true, placeholder: "GOCSPX-..." },
+      {
+        key: "GOOGLE_BUSINESS_CLIENT_ID",
+        label: "Client ID",
+        secret: false,
+        placeholder: "...apps.googleusercontent.com",
+      },
+      {
+        key: "GOOGLE_BUSINESS_CLIENT_SECRET",
+        label: "Client secret",
+        secret: true,
+        placeholder: "GOCSPX-...",
+      },
     ],
   },
   {
@@ -76,7 +101,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.google.com/maps/documentation/places/web-service/overview",
     credentialGroup: "google_maps",
     credentialFields: [
-      { key: "GOOGLE_MAPS_API_KEY", label: "API key", secret: true, hint: "Enable Places API (New) + Geocoding API on the key. Server-side use only." },
+      {
+        key: "GOOGLE_MAPS_API_KEY",
+        label: "API key",
+        secret: true,
+        hint: "Enable Places API (New) + Geocoding API on the key. Server-side use only.",
+      },
     ],
   },
   {
@@ -109,15 +139,25 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     label: "Google Ads",
     description: "Campaign performance via the Google Ads API.",
     kind: "oauth2",
-    requiredSecrets: ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN"],
+    requiredSecrets: [
+      "GOOGLE_OAUTH_CLIENT_ID",
+      "GOOGLE_OAUTH_CLIENT_SECRET",
+      "GOOGLE_ADS_DEVELOPER_TOKEN",
+    ],
     scopes: ["https://www.googleapis.com/auth/adwords", "openid", "email"],
     docsUrl: "https://developers.google.com/google-ads/api/docs/start",
     credentialGroup: "google_oauth",
     credentialFields: [
       ...GOOGLE_OAUTH_FIELDS,
-      { key: "GOOGLE_ADS_DEVELOPER_TOKEN", label: "Developer token", secret: true, hint: "Requires Google Ads API access approval." },
+      {
+        key: "GOOGLE_ADS_DEVELOPER_TOKEN",
+        label: "Developer token",
+        secret: true,
+        hint: "Requires Google Ads API access approval.",
+      },
     ],
-    approvalRequired: "Google Ads API developer tokens require an approved developer account (basic access).",
+    approvalRequired:
+      "Google Ads API developer tokens require an approved developer account (basic access).",
   },
   {
     id: "google_gmail",
@@ -162,7 +202,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     description: "Page ratings, recommendations and comments.",
     kind: "oauth2",
     requiredSecrets: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
-    scopes: ["pages_show_list", "pages_read_engagement", "pages_read_user_content", "business_management"],
+    scopes: [
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_read_user_content",
+      "business_management",
+    ],
     docsUrl: "https://developers.facebook.com/docs/graph-api/reference/page/ratings/",
     credentialGroup: "meta",
     credentialFields: META_FIELDS,
@@ -174,7 +219,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     description: "Comments and mentions on the linked business account.",
     kind: "oauth2",
     requiredSecrets: ["FACEBOOK_APP_ID", "FACEBOOK_APP_SECRET"],
-    scopes: ["instagram_basic", "instagram_manage_comments", "pages_show_list", "business_management"],
+    scopes: [
+      "instagram_basic",
+      "instagram_manage_comments",
+      "pages_show_list",
+      "business_management",
+    ],
     docsUrl: "https://developers.facebook.com/docs/instagram-api/",
     credentialGroup: "meta",
     credentialFields: META_FIELDS,
@@ -190,8 +240,18 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api",
     credentialGroup: "whatsapp",
     credentialFields: [
-      { key: "WHATSAPP_ACCESS_TOKEN", label: "Access token", secret: true, hint: "System-user token with whatsapp_business_messaging." },
-      { key: "WHATSAPP_PHONE_NUMBER_ID", label: "Phone number ID", secret: false, hint: "From the WhatsApp Business account in Meta Business." },
+      {
+        key: "WHATSAPP_ACCESS_TOKEN",
+        label: "Access token",
+        secret: true,
+        hint: "System-user token with whatsapp_business_messaging.",
+      },
+      {
+        key: "WHATSAPP_PHONE_NUMBER_ID",
+        label: "Phone number ID",
+        secret: false,
+        hint: "From the WhatsApp Business account in Meta Business.",
+      },
     ],
   },
   {
@@ -203,7 +263,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredSecrets: ["TRUSTPILOT_API_KEY"],
     scopes: [],
     docsUrl: "https://documentation-apidocumentation.trustpilot.com/",
-    accountField: { label: "Business domain", hint: "e.g. seovale.com — used to resolve your Trustpilot business unit." },
+    accountField: {
+      label: "Business domain",
+      hint: "e.g. seovale.com — used to resolve your Trustpilot business unit.",
+    },
     credentialGroup: "trustpilot",
     credentialFields: [{ key: "TRUSTPILOT_API_KEY", label: "API key", secret: true }],
   },
@@ -216,7 +279,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredSecrets: ["TRIPADVISOR_API_KEY"],
     scopes: [],
     docsUrl: "https://tripadvisor-content-api.readme.io/reference/overview",
-    accountField: { label: "Listing name or location ID", hint: "Exact business name or numeric Tripadvisor location ID." },
+    accountField: {
+      label: "Listing name or location ID",
+      hint: "Exact business name or numeric Tripadvisor location ID.",
+    },
     credentialGroup: "tripadvisor",
     credentialFields: [{ key: "TRIPADVISOR_API_KEY", label: "Content API key", secret: true }],
   },
@@ -229,9 +295,19 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredSecrets: ["YELP_FUSION_API_KEY"],
     scopes: [],
     docsUrl: "https://docs.developer.yelp.com/docs/fusion-intro",
-    accountField: { label: "Business alias or ID", hint: "Yelp business alias, e.g. the slug from the business page URL." },
+    accountField: {
+      label: "Business alias or ID",
+      hint: "Yelp business alias, e.g. the slug from the business page URL.",
+    },
     credentialGroup: "yelp",
-    credentialFields: [{ key: "YELP_FUSION_API_KEY", label: "API key", secret: true, hint: "Create at the Yelp Fusion dashboard." }],
+    credentialFields: [
+      {
+        key: "YELP_FUSION_API_KEY",
+        label: "API key",
+        secret: true,
+        hint: "Create at the Yelp Fusion dashboard.",
+      },
+    ],
   },
   {
     id: "reddit",
@@ -274,7 +350,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.pinterest.com/docs/getting-started/authentication/",
     credentialGroup: "pinterest",
     credentialFields: [
-      { key: "PINTEREST_CLIENT_ID", label: "App ID (Client ID)", secret: false, hint: "From the Pinterest developer app." },
+      {
+        key: "PINTEREST_CLIENT_ID",
+        label: "App ID (Client ID)",
+        secret: false,
+        hint: "From the Pinterest developer app.",
+      },
       { key: "PINTEREST_CLIENT_SECRET", label: "App secret", secret: true },
     ],
   },
@@ -300,7 +381,14 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://docs.ahrefs.com/reference/get-available-datasets",
     credentialGroup: "ahrefs",
-    credentialFields: [{ key: "AHREFS_API_TOKEN", label: "API token", secret: true, hint: "API access requires an Ahrefs plan with the API add-on." }],
+    credentialFields: [
+      {
+        key: "AHREFS_API_TOKEN",
+        label: "API token",
+        secret: true,
+        hint: "API access requires an Ahrefs plan with the API add-on.",
+      },
+    ],
     approvalRequired: "Ahrefs API access requires a plan with the API add-on enabled.",
   },
   {
@@ -343,7 +431,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://platform.openai.com/docs/api-reference",
     credentialGroup: "openai",
-    credentialFields: [{ key: "OPENAI_API_KEY", label: "API key", secret: true, placeholder: "sk-..." }],
+    credentialFields: [
+      { key: "OPENAI_API_KEY", label: "API key", secret: true, placeholder: "sk-..." },
+    ],
   },
   {
     id: "anthropic",
@@ -355,7 +445,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://docs.anthropic.com/en/api",
     credentialGroup: "anthropic",
-    credentialFields: [{ key: "ANTHROPIC_API_KEY", label: "API key", secret: true, placeholder: "sk-ant-..." }],
+    credentialFields: [
+      { key: "ANTHROPIC_API_KEY", label: "API key", secret: true, placeholder: "sk-ant-..." },
+    ],
   },
   {
     id: "resend_email",
@@ -378,7 +470,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     requiredSecrets: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN"],
     scopes: [],
     docsUrl: "https://www.twilio.com/docs/usage/api",
-    accountField: { label: "Sender phone number", hint: "Twilio number or sender ID used as the SMS from-address." },
+    accountField: {
+      label: "Sender phone number",
+      hint: "Twilio number or sender ID used as the SMS from-address.",
+    },
     credentialGroup: "twilio_sms",
     credentialFields: [
       { key: "TWILIO_ACCOUNT_SID", label: "Account SID", secret: false, placeholder: "AC..." },
@@ -396,8 +491,18 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://docs.stripe.com/api",
     credentialGroup: "stripe",
     credentialFields: [
-      { key: "STRIPE_SECRET_KEY", label: "Secret key", secret: true, placeholder: "sk_live_... / sk_test_..." },
-      { key: "STRIPE_WEBHOOK_SECRET", label: "Webhook signing secret", secret: true, placeholder: "whsec_..." },
+      {
+        key: "STRIPE_SECRET_KEY",
+        label: "Secret key",
+        secret: true,
+        placeholder: "sk_live_... / sk_test_...",
+      },
+      {
+        key: "STRIPE_WEBHOOK_SECRET",
+        label: "Webhook signing secret",
+        secret: true,
+        placeholder: "whsec_...",
+      },
     ],
   },
   {
@@ -437,7 +542,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://docs.firecrawl.dev/api-reference/v2-introduction",
     credentialGroup: "web_crawler",
-    credentialFields: [{ key: "FIRECRAWL_API_KEY", label: "API key", secret: true, placeholder: "fc-..." }],
+    credentialFields: [
+      { key: "FIRECRAWL_API_KEY", label: "API key", secret: true, placeholder: "fc-..." },
+    ],
   },
   {
     id: "pagespeed",
@@ -450,7 +557,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.google.com/speed/docs/insights/v5/get-started",
     credentialGroup: "pagespeed",
     credentialFields: [
-      { key: "PAGESPEED_API_KEY", label: "API key", secret: true, hint: "Google Cloud key with PageSpeed Insights API enabled." },
+      {
+        key: "PAGESPEED_API_KEY",
+        label: "API key",
+        secret: true,
+        hint: "Google Cloud key with PageSpeed Insights API enabled.",
+      },
     ],
   },
   {
@@ -461,7 +573,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     kind: "api_key",
     requiredSecrets: [],
     scopes: [],
-    accountField: { label: "Domain to monitor", hint: "e.g. seovale.com — scanned live by Qualys SSL Labs. No key required." },
+    accountField: {
+      label: "Domain to monitor",
+      hint: "e.g. seovale.com — scanned live by Qualys SSL Labs. No key required.",
+    },
     docsUrl: "https://github.com/ssllabs/ssllabs-scan/blob/master/ssllabs-api-docs-v3.md",
   },
   {
@@ -472,7 +587,10 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     kind: "api_key",
     requiredSecrets: [],
     scopes: [],
-    accountField: { label: "Domain", hint: "e.g. seovale.com — looked up live over RDAP. No key required." },
+    accountField: {
+      label: "Domain",
+      hint: "e.g. seovale.com — looked up live over RDAP. No key required.",
+    },
     docsUrl: "https://about.rdap.org/",
   },
   {
@@ -485,7 +603,9 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://uptimerobot.com/api/",
     credentialGroup: "uptime_monitor",
-    credentialFields: [{ key: "UPTIMEROBOT_API_KEY", label: "API key", secret: true, placeholder: "u1234567-..." }],
+    credentialFields: [
+      { key: "UPTIMEROBOT_API_KEY", label: "API key", secret: true, placeholder: "u1234567-..." },
+    ],
   },
   {
     id: "url_reputation",
@@ -498,7 +618,12 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://developers.google.com/safe-browsing/v4/lookup-api",
     credentialGroup: "url_reputation",
     credentialFields: [
-      { key: "SAFE_BROWSING_API_KEY", label: "API key", secret: true, hint: "Google Cloud key with Safe Browsing API enabled." },
+      {
+        key: "SAFE_BROWSING_API_KEY",
+        label: "API key",
+        secret: true,
+        hint: "Google Cloud key with Safe Browsing API enabled.",
+      },
     ],
   },
   {
@@ -512,7 +637,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://docs.indeed.com/",
     manualReason:
       "Indeed does not publish a self-serve company-review API. Access requires an approved Indeed partner agreement, so this stays unconnected until credentials are granted.",
-    approvalRequired: "Indeed company-review API access requires an approved Indeed partner agreement.",
+    approvalRequired:
+      "Indeed company-review API access requires an approved Indeed partner agreement.",
   },
   {
     id: "meta_business",
@@ -549,7 +675,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     docsUrl: "https://www.glassdoor.com/developer/index.htm",
     manualReason:
       "Glassdoor closed its public review API; data access is partner-only. No connection can be established without an approved partner key.",
-    approvalRequired: "Glassdoor API access is partner-only; requires an approved Glassdoor partnership.",
+    approvalRequired:
+      "Glassdoor API access is partner-only; requires an approved Glassdoor partnership.",
   },
 ];
 

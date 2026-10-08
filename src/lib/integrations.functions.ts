@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { INTEGRATIONS, integrationById } from "@/lib/integrations/registry";
 import type { TestResult } from "@/lib/integrations/providers.server";
 
-type Ctx = { supabase: any; userId: string };
+type Ctx = import("./backend-types").AuthContext;
 
 async function workspace(context: Ctx) {
   const { data, error } = await context.supabase
@@ -20,7 +20,8 @@ async function workspace(context: Ctx) {
 }
 
 function requireAdmin(member: { role: string }) {
-  if (member.role === "member") throw new Error("Only a workspace owner or admin can manage integrations.");
+  if (member.role === "member")
+    throw new Error("Only a workspace owner or admin can manage integrations.");
 }
 
 /** Non-secret projection — credential columns are never selected. */
@@ -33,14 +34,20 @@ export const listIntegrations = createServerFn({ method: "GET" })
     const member = await workspace(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { providerConfigured } = await import("@/lib/integrations/providers.server");
-    const { loadProviderCredentials, credentialHints } = await import("@/lib/integrations/credentials.server");
+    const { loadProviderCredentials, credentialHints } =
+      await import("@/lib/integrations/credentials.server");
     const groups = Array.from(new Set(INTEGRATIONS.map((d) => d.credentialGroup ?? d.id)));
     const bags: Record<string, Record<string, string>> = {};
-    for (const group of groups) bags[group] = await loadProviderCredentials(supabaseAdmin, member.workspace_id, group);
+    for (const group of groups)
+      bags[group] = await loadProviderCredentials(supabaseAdmin, member.workspace_id, group);
     const hints = await credentialHints(supabaseAdmin, member.workspace_id);
     const maskedFor = (definition: (typeof INTEGRATIONS)[number]) =>
       (definition.credentialFields ?? []).map((field) => {
-        const stored = hints.find((h) => h.provider === (definition.credentialGroup ?? definition.id) && h.field_key === field.key);
+        const stored = hints.find(
+          (h) =>
+            h.provider === (definition.credentialGroup ?? definition.id) &&
+            h.field_key === field.key,
+        );
         return {
           key: field.key,
           label: field.label,
@@ -57,21 +64,22 @@ export const listIntegrations = createServerFn({ method: "GET" })
       .select(SAFE_COLUMNS)
       .eq("workspace_id", member.workspace_id);
     if (error) throw error;
-    const rows = new Map((data ?? []).map((row: any) => [row.provider, row]));
+    const rows = new Map((data ?? []).map((row) => [row.provider, row]));
 
     // Live health + rate-limit state, read from the rows the adapters actually wrote.
     const healthRows = await supabaseAdmin
       .from("integration_health")
       .select("provider,status,latency_ms,outcome_code,last_error,last_checked_at,last_ok_at")
       .eq("workspace_id", member.workspace_id);
-    const health = new Map((healthRows.data ?? []).map((row: any) => [row.provider, row]));
+    const health = new Map((healthRows.data ?? []).map((row) => [row.provider, row]));
     const limitRows = await supabaseAdmin
       .from("integration_rate_limits")
       .select("provider,limit_value,remaining,reset_at,recorded_at")
       .eq("workspace_id", member.workspace_id)
       .order("recorded_at", { ascending: false });
-    const limits = new Map<string, any>();
-    for (const row of limitRows.data ?? []) if (!limits.has(row.provider)) limits.set(row.provider, row);
+    const limits = new Map<string, NonNullable<typeof limitRows.data>[number]>();
+    for (const row of limitRows.data ?? [])
+      if (!limits.has(row.provider)) limits.set(row.provider, row);
     const syncRows = await supabaseAdmin
       .from("provider_resources")
       .select("provider,last_synced_at")
@@ -79,18 +87,26 @@ export const listIntegrations = createServerFn({ method: "GET" })
       .not("last_synced_at", "is", null)
       .order("last_synced_at", { ascending: false });
     const lastSync = new Map<string, string>();
-    for (const row of syncRows.data ?? []) if (!lastSync.has(row.provider)) lastSync.set(row.provider, row.last_synced_at);
+    for (const row of syncRows.data ?? [])
+      if (!lastSync.has(row.provider)) lastSync.set(row.provider, row.last_synced_at);
 
     const liveState = (providerId: string) => {
-      const h = health.get(providerId) as any;
-      const l = limits.get(providerId) as any;
+      const h = health.get(providerId);
+      const l = limits.get(providerId);
       return {
         lastSyncAt: lastSync.get(providerId) ?? null,
         lastSuccessAt: h?.last_ok_at ?? null,
         lastCheckedAt: h?.last_checked_at ?? null,
         latencyMs: h?.latency_ms ?? null,
         outcomeCode: h?.outcome_code ?? null,
-        rateLimit: l ? { limit: l.limit_value, remaining: l.remaining, resetAt: l.reset_at, recordedAt: l.recorded_at } : null,
+        rateLimit: l
+          ? {
+              limit: l.limit_value,
+              remaining: l.remaining,
+              resetAt: l.reset_at,
+              recordedAt: l.recorded_at,
+            }
+          : null,
       };
     };
 
@@ -107,9 +123,17 @@ export const listIntegrations = createServerFn({ method: "GET" })
           const row = google.data;
           return {
             provider: definition.id,
-            configured: providerConfigured(definition.id, bags[definition.credentialGroup ?? definition.id]),
+            configured: providerConfigured(
+              definition.id,
+              bags[definition.credentialGroup ?? definition.id],
+            ),
             credentials: maskedFor(definition),
-            status: row?.status === "connected" ? "connected" : row?.last_error ? "error" : "disconnected",
+            status:
+              row?.status === "connected"
+                ? "connected"
+                : row?.last_error
+                  ? "error"
+                  : "disconnected",
             accountLabel: row?.google_account_email ?? null,
             accountRef: null,
             scopes: definition.scopes,
@@ -121,8 +145,11 @@ export const listIntegrations = createServerFn({ method: "GET" })
             ...liveState(definition.id),
           };
         }
-        const row = rows.get(definition.id) as any;
-        const configured = providerConfigured(definition.id, bags[definition.credentialGroup ?? definition.id]);
+        const row = rows.get(definition.id);
+        const configured = providerConfigured(
+          definition.id,
+          bags[definition.credentialGroup ?? definition.id],
+        );
         const status =
           definition.kind === "manual"
             ? "unavailable"
@@ -164,33 +191,44 @@ export const listIntegrationEvents = createServerFn({ method: "GET" })
 
 export const startIntegrationOAuth = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ provider: z.string(), origin: z.string().url() }).parse(input))
+  .inputValidator((input: unknown) =>
+    z.object({ provider: z.string(), origin: z.string().url() }).parse(input),
+  )
   .handler(async ({ data, context }) => {
     const member = await workspace(context);
     requireAdmin(member);
     const definition = integrationById(data.provider);
-    if (!definition || definition.kind !== "oauth2") throw new Error("This integration does not use sign-in authorization.");
-    const { assertAllowedOrigin, googleCallbackOrigin } = await import("@/lib/google-business.server");
-    const { buildAuthorizationUrl, providerConfigured } = await import("@/lib/integrations/providers.server");
+    if (!definition || definition.kind !== "oauth2")
+      throw new Error("This integration does not use sign-in authorization.");
+    const { assertAllowedOrigin, googleCallbackOrigin } =
+      await import("@/lib/google-business.server");
+    const { buildAuthorizationUrl, providerConfigured } =
+      await import("@/lib/integrations/providers.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { loadProviderCredentials } = await import("@/lib/integrations/credentials.server");
     const creds = await loadProviderCredentials(supabaseAdmin, member.workspace_id, data.provider);
     if (!providerConfigured(data.provider, creds)) {
-      throw new Error(`${definition.label} is missing its application credentials (${definition.requiredSecrets.join(", ")}).`);
+      throw new Error(
+        `${definition.label} is missing its application credentials (${definition.requiredSecrets.join(", ")}).`,
+      );
     }
-    const { encryptValue, hashState, pkce, randomToken } = await import("@/lib/integrations/crypto.server");
+    const { encryptValue, hashState, pkce, randomToken } =
+      await import("@/lib/integrations/crypto.server");
     const origin = assertAllowedOrigin(data.origin);
     const callbackOrigin = googleCallbackOrigin(origin);
     const redirectUri = `${callbackOrigin}/api/public/integrations/callback`;
     const state = randomToken();
-    const challenge = definition.id in { google_gmail: 1, youtube: 1, twitter: 1, pinterest: 1 } ? pkce() : null;
+    const challenge =
+      definition.id in { google_gmail: 1, youtube: 1, twitter: 1, pinterest: 1 } ? pkce() : null;
     const codes = challenge ?? { verifier: null, challenge: null };
     const { error } = await supabaseAdmin.from("integration_oauth_states").insert({
       workspace_id: member.workspace_id,
       user_id: context.userId,
       provider: data.provider,
       state_hash: hashState(state),
-      payload_ciphertext: await encryptValue(JSON.stringify({ verifier: codes.verifier, redirectUri })),
+      payload_ciphertext: await encryptValue(
+        JSON.stringify({ verifier: codes.verifier, redirectUri }),
+      ),
       redirect_origin: origin,
       expires_at: new Date(Date.now() + 600_000).toISOString(),
     });
@@ -202,17 +240,28 @@ export const startIntegrationOAuth = createServerFn({ method: "POST" })
       level: "info",
       message: `Authorization requested for ${definition.label}.`,
     });
-    return { authorizationUrl: buildAuthorizationUrl(data.provider, redirectUri, state, codes.challenge, creds) };
+    return {
+      authorizationUrl: buildAuthorizationUrl(
+        data.provider,
+        redirectUri,
+        state,
+        codes.challenge,
+        creds,
+      ),
+    };
   });
 
 export const saveIntegrationAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({ provider: z.string(), accountRef: z.string().trim().min(1).max(200) }).parse(input))
+  .inputValidator((input: unknown) =>
+    z.object({ provider: z.string(), accountRef: z.string().trim().min(1).max(200) }).parse(input),
+  )
   .handler(async ({ data, context }) => {
     const member = await workspace(context);
     requireAdmin(member);
     const definition = integrationById(data.provider);
-    if (!definition || definition.kind !== "api_key") throw new Error("This integration does not use a stored business reference.");
+    if (!definition || definition.kind !== "api_key")
+      throw new Error("This integration does not use a stored business reference.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.from("integration_connections").upsert(
       {
@@ -267,7 +316,12 @@ export const testIntegration = createServerFn({ method: "POST" })
       });
     };
 
-    const log = (level: string, message: string, httpStatus: number | null, eventType = "connection_test") =>
+    const log = (
+      level: string,
+      message: string,
+      httpStatus: number | null,
+      eventType = "connection_test",
+    ) =>
       supabaseAdmin.from("integration_events").insert({
         workspace_id: member.workspace_id,
         provider: data.provider,
@@ -279,7 +333,8 @@ export const testIntegration = createServerFn({ method: "POST" })
 
     if (definition.kind === "manual") {
       // Partner-only APIs: reported honestly instead of pretending a test is possible.
-      const message = definition.manualReason ?? "This provider has no public API for this workspace.";
+      const message =
+        definition.manualReason ?? "This provider has no public API for this workspace.";
       const code = definition.approvalRequired ? "APPROVAL_REQUIRED" : "UNAVAILABLE";
       await log("warning", message, null);
       await recordHealth(code, message);
@@ -300,13 +355,28 @@ export const testIntegration = createServerFn({ method: "POST" })
       }
       const { usableAccessToken } = await import("@/lib/google-business-sync.server");
       try {
-        const token = await usableAccessToken(supabaseAdmin, member.workspace_id, connection as any);
-        const response = await fetch("https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=1", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const token = await usableAccessToken(supabaseAdmin, member.workspace_id, connection);
+        const response = await fetch(
+          "https://mybusinessaccountmanagement.googleapis.com/v1/accounts?pageSize=1",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         const ok = response.ok;
-        await log(ok ? "info" : "error", ok ? "Google Business Profile API reachable." : `Google returned HTTP ${response.status}.`, response.status);
-        return { ok, status: response.status, message: ok ? "Google Business Profile API reachable." : `Google returned HTTP ${response.status}.` };
+        await log(
+          ok ? "info" : "error",
+          ok
+            ? "Google Business Profile API reachable."
+            : `Google returned HTTP ${response.status}.`,
+          response.status,
+        );
+        return {
+          ok,
+          status: response.status,
+          message: ok
+            ? "Google Business Profile API reachable."
+            : `Google returned HTTP ${response.status}.`,
+        };
       } catch (caught) {
         const message = caught instanceof Error ? caught.message : "Google test failed.";
         await log("error", message, null);
@@ -345,16 +415,32 @@ export const testIntegration = createServerFn({ method: "POST" })
       }
       const { decryptValue, encryptValue } = await import("@/lib/integrations/crypto.server");
       let accessToken = await decryptValue(row.access_token_ciphertext);
-      const expiresSoon = row.token_expires_at ? Date.parse(row.token_expires_at) - Date.now() < 120_000 : false;
+      const expiresSoon = row.token_expires_at
+        ? Date.parse(row.token_expires_at) - Date.now() < 120_000
+        : false;
       if (expiresSoon) {
         if (!row.refresh_token_ciphertext) {
           await supabaseAdmin
             .from("integration_connections")
-            .update({ status: "expired", last_error: "Access expired and the provider issued no refresh token. Reconnect the account." })
+            .update({
+              status: "expired",
+              last_error:
+                "Access expired and the provider issued no refresh token. Reconnect the account.",
+            })
             .eq("id", row.id);
-          await log("warning", "Access token expired without a refresh token.", null, "token_expired");
+          await log(
+            "warning",
+            "Access token expired without a refresh token.",
+            null,
+            "token_expired",
+          );
           await recordHealth("TOKEN_EXPIRED", "Access expired. Reconnect this account.");
-          return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message: "Access expired. Reconnect this account." };
+          return {
+            ok: false,
+            status: 0,
+            code: "TOKEN_EXPIRED" as const,
+            message: "Access expired. Reconnect this account.",
+          };
         }
         try {
           const refreshed = await providers.refreshAccessToken(
@@ -378,7 +464,10 @@ export const testIntegration = createServerFn({ method: "POST" })
           await log("info", "Access token refreshed.", null, "token_refreshed");
         } catch (caught) {
           const message = caught instanceof Error ? caught.message : "Token refresh failed.";
-          await supabaseAdmin.from("integration_connections").update({ status: "expired", last_error: message }).eq("id", row.id);
+          await supabaseAdmin
+            .from("integration_connections")
+            .update({ status: "expired", last_error: message })
+            .eq("id", row.id);
           await log("error", message, null, "token_refresh_failed");
           await recordHealth("TOKEN_EXPIRED", message);
           return { ok: false, status: 0, code: "TOKEN_EXPIRED" as const, message };
@@ -392,10 +481,19 @@ export const testIntegration = createServerFn({ method: "POST" })
     if (result.ok) {
       await ops.recordCircuitSuccess(supabaseAdmin, member.workspace_id, data.provider);
     } else {
-      await ops.recordCircuitFailure(supabaseAdmin, member.workspace_id, data.provider, result.message);
+      await ops.recordCircuitFailure(
+        supabaseAdmin,
+        member.workspace_id,
+        data.provider,
+        result.message,
+      );
     }
 
-    const status = result.ok ? "connected" : result.status === 401 || result.status === 403 ? "expired" : "error";
+    const status = result.ok
+      ? "connected"
+      : result.status === 401 || result.status === 403
+        ? "expired"
+        : "error";
     await supabaseAdmin.from("integration_connections").upsert(
       {
         workspace_id: member.workspace_id,
@@ -440,7 +538,12 @@ export const testIntegration = createServerFn({ method: "POST" })
       outcome_code: result.code ?? (result.ok ? "CONNECTED" : "PROVIDER_ERROR"),
       error_message: result.ok ? null : result.message,
     });
-    return { ok: result.ok, status: result.status, message: result.message, code: result.code ?? (result.ok ? "CONNECTED" : "PROVIDER_ERROR") };
+    return {
+      ok: result.ok,
+      status: result.status,
+      message: result.message,
+      code: result.code ?? (result.ok ? "CONNECTED" : "PROVIDER_ERROR"),
+    };
   });
 
 export const disconnectIntegration = createServerFn({ method: "POST" })
@@ -464,7 +567,10 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
       const { decryptValue } = await import("@/lib/integrations/crypto.server");
       const { revokeOAuthToken } = await import("@/lib/integrations/providers.server");
       try {
-        const outcome = await revokeOAuthToken(data.provider, await decryptValue(row.access_token_ciphertext));
+        const outcome = await revokeOAuthToken(
+          data.provider,
+          await decryptValue(row.access_token_ciphertext),
+        );
         revokeNote = outcome.message;
       } catch (caught) {
         revokeNote = caught instanceof Error ? caught.message : "Revoke attempt failed.";
@@ -479,7 +585,12 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
     if (error) throw error;
     await supabaseAdmin
       .from("integration_health")
-      .update({ status: "unknown", outcome_code: "NOT_CONFIGURED", last_error: null, last_checked_at: new Date().toISOString() })
+      .update({
+        status: "unknown",
+        outcome_code: "NOT_CONFIGURED",
+        last_error: null,
+        last_checked_at: new Date().toISOString(),
+      })
       .eq("workspace_id", member.workspace_id)
       .eq("provider", data.provider);
     await supabaseAdmin.from("integration_events").insert({
@@ -510,7 +621,8 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
     const member = await workspace(context);
     requireAdmin(member);
     const definition = integrationById(data.provider);
-    if (!definition?.credentialFields?.length) throw new Error("This integration has no configurable credentials.");
+    if (!definition?.credentialFields?.length)
+      throw new Error("This integration has no configurable credentials.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const credentials = await import("@/lib/integrations/credentials.server");
@@ -525,10 +637,19 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
     );
     if (saved.length === 0) throw new Error("Enter at least one credential value.");
 
-    const bag = await credentials.loadProviderCredentials(supabaseAdmin, member.workspace_id, data.provider);
+    const bag = await credentials.loadProviderCredentials(
+      supabaseAdmin,
+      member.workspace_id,
+      data.provider,
+    );
     const missing = definition.requiredSecrets.filter((key) => !bag[key] && !process.env[key]);
 
-    const log = (level: string, message: string, eventType: string, httpStatus: number | null = null) =>
+    const log = (
+      level: string,
+      message: string,
+      eventType: string,
+      httpStatus: number | null = null,
+    ) =>
       supabaseAdmin.from("integration_events").insert({
         workspace_id: member.workspace_id,
         provider: data.provider,
@@ -538,10 +659,18 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
         http_status: httpStatus,
       });
 
-    await log("info", `Credentials updated (${saved.join(", ")}) by workspace ${member.role}.`, "credentials_saved");
+    await log(
+      "info",
+      `Credentials updated (${saved.join(", ")}) by workspace ${member.role}.`,
+      "credentials_saved",
+    );
 
     if (missing.length > 0) {
-      return { saved: saved.length, verified: false, message: `Still missing: ${missing.join(", ")}.` };
+      return {
+        saved: saved.length,
+        verified: false,
+        message: `Still missing: ${missing.join(", ")}.`,
+      };
     }
 
     // API-key providers can be verified immediately with a real provider call.
@@ -552,7 +681,11 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
         .eq("workspace_id", member.workspace_id)
         .eq("provider", data.provider)
         .maybeSingle();
-      const result = await providers.testApiKeyProvider(definition.id, row?.account_ref ?? null, bag);
+      const result = await providers.testApiKeyProvider(
+        definition.id,
+        row?.account_ref ?? null,
+        bag,
+      );
       await supabaseAdmin.from("integration_connections").upsert(
         {
           workspace_id: member.workspace_id,
@@ -568,7 +701,12 @@ export const saveProviderCredentials = createServerFn({ method: "POST" })
         },
         { onConflict: "workspace_id,provider" },
       );
-      await log(result.ok ? "info" : "error", result.message, "connection_test", result.status || null);
+      await log(
+        result.ok ? "info" : "error",
+        result.message,
+        "connection_test",
+        result.status || null,
+      );
       return { saved: saved.length, verified: result.ok, message: result.message };
     }
 
@@ -628,7 +766,10 @@ export const getIntegrationHealth = createServerFn({ method: "GET" })
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const [health, syncJobs, rateLimits, errorLogs] = await Promise.all([
-      context.supabase.from("integration_health").select("provider,status,outcome_code,last_error,last_checked_at,last_ok_at").eq("workspace_id", wid),
+      context.supabase
+        .from("integration_health")
+        .select("provider,status,outcome_code,last_error,last_checked_at,last_ok_at")
+        .eq("workspace_id", wid),
       context.supabase
         .from("integration_sync_jobs")
         .select("provider,completed_at,status")
@@ -652,12 +793,12 @@ export const getIntegrationHealth = createServerFn({ method: "GET" })
     ]);
     for (const r of [health, syncJobs, rateLimits, errorLogs]) if (r.error) throw r.error;
 
-    const healthBy = new Map((health.data ?? []).map((r: any) => [r.provider, r]));
+    const healthBy = new Map((health.data ?? []).map((r) => [r.provider, r]));
     const syncBy = new Map<string, string>();
     for (const row of syncJobs.data ?? []) {
       if (row.completed_at && !syncBy.has(row.provider)) syncBy.set(row.provider, row.completed_at);
     }
-    const limitBy = new Map<string, any>();
+    const limitBy = new Map<string, NonNullable<typeof rateLimits.data>[number]>();
     for (const row of rateLimits.data ?? []) {
       if (!limitBy.has(row.provider)) limitBy.set(row.provider, row);
     }
@@ -673,11 +814,12 @@ export const getIntegrationHealth = createServerFn({ method: "GET" })
       .eq("workspace_id", wid);
     for (const row of platforms ?? []) {
       const existing = syncBy.get(row.platform);
-      if (row.last_synced_at && (!existing || row.last_synced_at > existing)) syncBy.set(row.platform, row.last_synced_at);
+      if (row.last_synced_at && (!existing || row.last_synced_at > existing))
+        syncBy.set(row.platform, row.last_synced_at);
     }
 
     const items: ProviderHealth[] = INTEGRATIONS.map((definition) => {
-      const h: any = healthBy.get(definition.id);
+      const h = healthBy.get(definition.id);
       const limit = limitBy.get(definition.id);
       return {
         provider: definition.id,
@@ -690,7 +832,11 @@ export const getIntegrationHealth = createServerFn({ method: "GET" })
         lastError: h?.last_error ?? null,
         errors24h: errorsBy.get(definition.id) ?? 0,
         rateLimit: limit
-          ? { limit: limit.limit_value ?? null, remaining: limit.remaining ?? null, resetAt: limit.reset_at ?? null }
+          ? {
+              limit: limit.limit_value ?? null,
+              remaining: limit.remaining ?? null,
+              resetAt: limit.reset_at ?? null,
+            }
           : null,
       };
     });
@@ -733,7 +879,7 @@ export const getIntegrationHealthDetail = createServerFn({ method: "GET" })
     for (const r of [syncJobs, rateLimits, logs]) if (r.error) throw r.error;
 
     return {
-      syncJobs: (syncJobs.data ?? []).map((j: any) => ({
+      syncJobs: (syncJobs.data ?? []).map((j) => ({
         jobType: j.job_type,
         status: j.status,
         attempts: j.attempts,
@@ -741,7 +887,7 @@ export const getIntegrationHealthDetail = createServerFn({ method: "GET" })
         startedAt: j.started_at ?? null,
         completedAt: j.completed_at ?? null,
       })),
-      rateLimits: (rateLimits.data ?? []).map((r: any) => ({
+      rateLimits: (rateLimits.data ?? []).map((r) => ({
         limit: r.limit_value ?? null,
         remaining: r.remaining ?? null,
         resetAt: r.reset_at ?? null,
@@ -749,8 +895,8 @@ export const getIntegrationHealthDetail = createServerFn({ method: "GET" })
         recordedAt: r.recorded_at,
       })),
       errors: (logs.data ?? [])
-        .filter((l: any) => l.error_message)
-        .map((l: any) => ({
+        .filter((l) => l.error_message)
+        .map((l) => ({
           operation: l.operation,
           method: l.method,
           endpoint: l.endpoint,
@@ -794,7 +940,11 @@ export const getIntegrationOverview = createServerFn({ method: "GET" })
         .limit(10),
     ]);
 
-    const rows = (connections.data ?? []) as Array<{ provider: string; status: string; token_expires_at: string | null }>;
+    const rows = (connections.data ?? []) as Array<{
+      provider: string;
+      status: string;
+      token_expires_at: string | null;
+    }>;
     const manual = INTEGRATIONS.filter((d) => d.kind === "manual");
 
     return {
@@ -802,17 +952,22 @@ export const getIntegrationOverview = createServerFn({ method: "GET" })
       connected: rows.filter((r) => r.status === "connected").length,
       authErrors: rows.filter((r) => r.status === "error").length,
       expired: rows.filter((r) => r.status === "expired").length,
-      expiringSoon: rows.filter((r) => r.token_expires_at && r.token_expires_at < soon && r.status === "connected").length,
-      pendingConfiguration: INTEGRATIONS.length - manual.length - rows.filter((r) => r.status === "connected").length,
+      expiringSoon: rows.filter(
+        (r) => r.token_expires_at && r.token_expires_at < soon && r.status === "connected",
+      ).length,
+      pendingConfiguration:
+        INTEGRATIONS.length - manual.length - rows.filter((r) => r.status === "connected").length,
       approvalRequired: manual.length,
       errors24h: (errors.data ?? []).length,
-      auditLog: ((audits.data ?? []) as Array<{
-        id: string;
-        action: string;
-        target_type: string | null;
-        target_id: string | null;
-        created_at: string;
-      }>).map((row) => ({
+      auditLog: (
+        (audits.data ?? []) as Array<{
+          id: string;
+          action: string;
+          target_type: string | null;
+          target_id: string | null;
+          created_at: string;
+        }>
+      ).map((row) => ({
         id: row.id,
         action: row.action,
         target: row.target_type ?? null,

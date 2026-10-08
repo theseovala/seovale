@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useRealtimeInvalidate } from "@/hooks/use-realtime";
+import type { ScanAiAnalysis } from "@/lib/scan/ai-analysis.server";
 import {
   createScan,
   runScanNow,
@@ -47,7 +48,10 @@ export const Route = createFileRoute("/_authenticated/scans")({
           "Scan any website address for real technical, SEO, security, DNS and domain findings, with evidence, AI priorities and CSV export.",
       },
       { property: "og:title", content: "Website Scan Engine — Seovale" },
-      { property: "og:description", content: "Real URL scanning with evidence-backed findings and CSV export." },
+      {
+        property: "og:description",
+        content: "Real URL scanning with evidence-backed findings and CSV export.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -110,14 +114,50 @@ const SEVERITY_TONE: Record<string, string> = {
 
 function SourceIcon({ status }: { status: string }) {
   if (status === "completed") return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
-  if (["not_configured", "skipped", "not_supported", "unavailable", "approval_required", "auth_required", "rate_limited"].includes(status)) {
+  if (
+    [
+      "not_configured",
+      "skipped",
+      "not_supported",
+      "unavailable",
+      "approval_required",
+      "auth_required",
+      "rate_limited",
+    ].includes(status)
+  ) {
     return <Clock className="h-4 w-4 text-muted-foreground" />;
   }
   return <XCircle className="h-4 w-4 text-destructive" />;
 }
 
-const FINDING_FILTERS = ["all", "critical", "high", "medium", "low", "open", "resolved", "new", "changed"] as const;
+const FINDING_FILTERS = [
+  "all",
+  "critical",
+  "high",
+  "medium",
+  "low",
+  "open",
+  "resolved",
+  "new",
+  "changed",
+] as const;
 
+function isActionPlanItem(value: unknown): value is ScanAiAnalysis["actionPlan"][number] {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "findingCode" in value &&
+    typeof value.findingCode === "string" &&
+    "problem" in value &&
+    typeof value.problem === "string" &&
+    "impact" in value &&
+    typeof value.impact === "string" &&
+    "action" in value &&
+    typeof value.action === "string" &&
+    "expectedObjective" in value &&
+    typeof value.expectedObjective === "string"
+  );
+}
 
 function ScansPage() {
   const queryClient = useQueryClient();
@@ -130,7 +170,6 @@ function ScansPage() {
   const [openFinding, setOpenFinding] = useState<string | null>(null);
   const [findingFilter, setFindingFilter] = useState<(typeof FINDING_FILTERS)[number]>("all");
 
-
   const scans = useQuery({ queryKey: ["scans"], queryFn: () => listScans() });
   const detail = useQuery({
     queryKey: ["scan", activeId],
@@ -139,14 +178,17 @@ function ScansPage() {
     // Stage and status changes are pushed by the server; this slow poll only
     // covers a dropped websocket while a scan is still running.
     refetchInterval: (query) => {
-      const status = (query.state.data as any)?.scan?.status;
+      const status = query.state.data?.scan?.status;
       return status === "queued" || status === "running" || status === "retrying" ? 15000 : false;
     },
   });
 
   // Live scan progress: every stage row the engine writes pushes an update.
-  useRealtimeInvalidate("scan-progress", ["scans", "scan_stages"], [["scans"], ["scan", activeId ?? undefined]]);
-
+  useRealtimeInvalidate(
+    "scan-progress",
+    ["scans", "scan_stages"],
+    [["scans"], ["scan", activeId ?? undefined]],
+  );
 
   // Finding triage writes straight to the stored finding row, then the detail
   // query is refetched so filters, report and CSV all show the same status.
@@ -175,7 +217,7 @@ function ScansPage() {
         .catch((error: Error) => toast.error(error.message));
       return created;
     },
-    onSuccess: (created: any) =>
+    onSuccess: (created) =>
       created?.reused
         ? toast.info("A scan for this address is already running — showing it")
         : toast.success("Scan started — results appear as each source answers"),
@@ -251,7 +293,10 @@ function ScansPage() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const data = detail.data as any;
+  const data = detail.data;
+  const actionPlan = Array.isArray(data?.report?.action_plan)
+    ? data.report.action_plan.filter(isActionPlanItem)
+    : [];
   const busy = start.isPending || rescan.isPending;
 
   return (
@@ -261,7 +306,10 @@ function ScansPage() {
         description="Paste a website address. Seovale checks it live and reports only what it actually measured."
       />
 
-      <Section title="New scan" description="One address per scan. Everything measured is stored with its evidence and timestamp.">
+      <Section
+        title="New scan"
+        description="One address per scan. Everything measured is stored with its evidence and timestamp."
+      >
         <form
           className="flex flex-col gap-2 sm:flex-row"
           onSubmit={(event) => {
@@ -269,7 +317,12 @@ function ScansPage() {
             if (url.trim()) start.mutate(url.trim());
           }}
         >
-          <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="seovale.com" className="sm:max-w-md" />
+          <Input
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="seovale.com"
+            className="sm:max-w-md"
+          />
           <Button type="submit" disabled={busy || !url.trim()}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Radar className="h-4 w-4" />}
             {busy ? "Scanning…" : "Start scan"}
@@ -278,7 +331,11 @@ function ScansPage() {
       </Section>
 
       <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <Section className="min-w-0" title="Scan history" description="Completed scans are kept so results can be compared over time.">
+        <Section
+          className="min-w-0"
+          title="Scan history"
+          description="Completed scans are kept so results can be compared over time."
+        >
           {scans.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading
@@ -287,7 +344,7 @@ function ScansPage() {
             <p className="text-sm text-muted-foreground">No scans yet.</p>
           ) : (
             <ul className="stagger space-y-1">
-              {(scans.data as any[]).map((scan) => (
+              {(scans.data ?? []).map((scan) => (
                 <li key={scan.id}>
                   <button
                     type="button"
@@ -303,9 +360,10 @@ function ScansPage() {
                     <span className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
                         {SCAN_STATUS_LABEL[scan.status] ?? scan.status}
-
                       </Badge>
-                      <span className="num">{scan.score === null ? "No score" : `${scan.score}/100`}</span>
+                      <span className="num">
+                        {scan.score === null ? "No score" : `${scan.score}/100`}
+                      </span>
                       <span>· {new Date(scan.created_at).toLocaleString()}</span>
                     </span>
                   </button>
@@ -318,7 +376,11 @@ function ScansPage() {
         <div className="min-w-0 space-y-4">
           {!activeId ? (
             <Section title="Scan result">
-              <EmptyState icon={Radar} title="No scan selected" description="Start a scan or pick one from the history to see its findings and evidence." />
+              <EmptyState
+                icon={Radar}
+                title="No scan selected"
+                description="Start a scan or pick one from the history to see its findings and evidence."
+              />
             </Section>
           ) : detail.isLoading || !data ? (
             <Section title="Scan result">
@@ -335,24 +397,68 @@ function ScansPage() {
                   <div className="flex flex-wrap gap-2">
                     {["queued", "running", "retrying"].includes(data.scan.status) ? (
                       <>
-                        <Button variant="outline" size="sm" onClick={() => pause.mutate(data.scan.id)} disabled={pause.isPending}>
-                          {pause.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />} Pause
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => pause.mutate(data.scan.id)}
+                          disabled={pause.isPending}
+                        >
+                          {pause.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Pause className="h-4 w-4" />
+                          )}{" "}
+                          Pause
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => stop.mutate(data.scan.id)} disabled={stop.isPending}>
-                          {stop.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />} Cancel
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => stop.mutate(data.scan.id)}
+                          disabled={stop.isPending}
+                        >
+                          {stop.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Ban className="h-4 w-4" />
+                          )}{" "}
+                          Cancel
                         </Button>
                       </>
                     ) : null}
                     {["paused", "failed", "cancelled"].includes(data.scan.status) ? (
-                      <Button variant="outline" size="sm" onClick={() => resume.mutate(data.scan.id)} disabled={resume.isPending}>
-                        {resume.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => resume.mutate(data.scan.id)}
+                        disabled={resume.isPending}
+                      >
+                        {resume.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
                         {data.scan.status === "paused" ? "Resume" : "Retry"}
                       </Button>
                     ) : null}
-                    <Button variant="outline" size="sm" onClick={() => rescan.mutate(data.scan.target_url)} disabled={busy}>
-                      {rescan.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Re-scan
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => rescan.mutate(data.scan.target_url)}
+                      disabled={busy}
+                    >
+                      {rescan.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}{" "}
+                      Re-scan
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => download.mutate(data.scan.id)} disabled={download.isPending}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => download.mutate(data.scan.id)}
+                      disabled={download.isPending}
+                    >
                       <Download className="h-4 w-4" /> CSV
                     </Button>
                     <Button
@@ -362,30 +468,43 @@ function ScansPage() {
                       disabled={remove.isPending}
                       aria-label="Delete this scan and its stored data"
                     >
-                      {remove.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete
+                      {remove.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}{" "}
+                      Delete
                     </Button>
                   </div>
                 }
               >
                 {data.scan.error_message ? (
-                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{data.scan.error_message}</p>
+                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {data.scan.error_message}
+                  </p>
                 ) : null}
                 {data.report?.ai_status === "failed" ? (
                   <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-                    AI analysis failed for this scan, so no interpretation is shown. The measured findings below are unaffected.
-                    {data.report?.ai_error ? <span className="mt-1 block text-xs opacity-80">{data.report.ai_error}</span> : null}
+                    AI analysis failed for this scan, so no interpretation is shown. The measured
+                    findings below are unaffected.
+                    {data.report?.ai_error ? (
+                      <span className="mt-1 block text-xs opacity-80">{data.report.ai_error}</span>
+                    ) : null}
                   </p>
                 ) : null}
                 <p className="text-sm text-muted-foreground">
-                  {data.report?.summary ? data.report.summary : "AI summary unavailable for this scan."}
+                  {data.report?.summary
+                    ? data.report.summary
+                    : "AI summary unavailable for this scan."}
                 </p>
                 {data.report?.model ? (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Analysed by {data.report.model}
-                    {data.report?.ai_latency_ms ? ` in ${(data.report.ai_latency_ms / 1000).toFixed(1)}s` : ""}
+                    {data.report?.ai_latency_ms
+                      ? ` in ${(data.report.ai_latency_ms / 1000).toFixed(1)}s`
+                      : ""}
                   </p>
                 ) : null}
-
               </Section>
 
               {(data.stages ?? []).length > 0 ? (
@@ -394,7 +513,7 @@ function ScansPage() {
                   description="Each step is recorded by the engine itself, so it survives a page refresh."
                 >
                   <ul className="space-y-1.5">
-                    {(data.stages as any[]).map((item) => (
+                    {data.stages.map((item) => (
                       <li key={item.stage} className="flex items-start gap-2 text-sm">
                         <span className="icon-tile mt-0.5">
                           {item.status === "completed" ? (
@@ -424,11 +543,14 @@ function ScansPage() {
                 </Section>
               ) : null}
 
-              <Section title="Scan health" description="Every technical check that ran, with what it returned.">
+              <Section
+                title="Scan health"
+                description="Every technical check that ran, with what it returned."
+              >
                 <ul className="stagger grid gap-2 sm:grid-cols-2">
                   {data.sources
-                    .filter((source: any) => !String(source.source).startsWith("platform:"))
-                    .map((source: any) => (
+                    .filter((source) => !String(source.source).startsWith("platform:"))
+                    .map((source) => (
                       <li
                         key={source.source}
                         className="card-interactive flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm"
@@ -440,7 +562,10 @@ function ScansPage() {
                           <div className="flex items-center gap-2 font-medium">
                             <span className="truncate">{sourceLabel(source.source)}</span>
                             {source.status === "completed" ? (
-                              <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] uppercase">
+                              <Badge
+                                variant="outline"
+                                className="h-4 shrink-0 px-1 text-[9px] uppercase"
+                              >
                                 {source.freshness}
                               </Badge>
                             ) : null}
@@ -458,15 +583,15 @@ function ScansPage() {
                 </ul>
               </Section>
 
-              {data.sources.some((source: any) => String(source.source).startsWith("platform:")) ? (
+              {data.sources.some((source) => String(source.source).startsWith("platform:")) ? (
                 <Section
                   title="Platforms checked"
                   description="Which review and marketing platforms apply to this website, and whether this workspace can actually use them."
                 >
                   <ul className="stagger grid gap-2 sm:grid-cols-2">
                     {data.sources
-                      .filter((source: any) => String(source.source).startsWith("platform:"))
-                      .map((source: any) => (
+                      .filter((source) => String(source.source).startsWith("platform:"))
+                      .map((source) => (
                         <li
                           key={source.source}
                           className="card-interactive flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm"
@@ -477,7 +602,10 @@ function ScansPage() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 font-medium">
                               <span className="truncate">{sourceLabel(source.source)}</span>
-                              <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px] uppercase">
+                              <Badge
+                                variant="outline"
+                                className="h-4 shrink-0 px-1 text-[9px] uppercase"
+                              >
                                 {SOURCE_STATUS_LABEL[source.status] ?? source.status}
                               </Badge>
                             </div>
@@ -491,43 +619,65 @@ function ScansPage() {
                 </Section>
               ) : null}
 
-
               {data.comparison ? (
-                <Section title="Compared with the previous scan" description={`Previous scan ${new Date(data.comparison.previousAt).toLocaleString()} · score ${data.comparison.previousScore ?? "unavailable"}`}>
+                <Section
+                  title="Compared with the previous scan"
+                  description={`Previous scan ${new Date(data.comparison.previousAt).toLocaleString()} · score ${data.comparison.previousScore ?? "unavailable"}`}
+                >
                   <div className="grid gap-3 sm:grid-cols-3 text-sm">
                     <div>
-                      <p className="font-medium text-emerald-600">Resolved ({data.comparison.resolved.length})</p>
+                      <p className="font-medium text-emerald-600">
+                        Resolved ({data.comparison.resolved.length})
+                      </p>
                       <ul className="mt-1 space-y-1 text-muted-foreground">
-                        {data.comparison.resolved.slice(0, 6).map((item: any) => <li key={item.code}>{item.title}</li>)}
+                        {data.comparison.resolved.slice(0, 6).map((item) => (
+                          <li key={item.code}>{item.title}</li>
+                        ))}
                         {data.comparison.resolved.length === 0 ? <li>None</li> : null}
                       </ul>
                     </div>
                     <div>
-                      <p className="font-medium text-destructive">New issues ({data.comparison.introduced.length})</p>
+                      <p className="font-medium text-destructive">
+                        New issues ({data.comparison.introduced.length})
+                      </p>
                       <ul className="mt-1 space-y-1 text-muted-foreground">
-                        {data.comparison.introduced.slice(0, 6).map((item: any) => <li key={item.code}>{item.title}</li>)}
+                        {data.comparison.introduced.slice(0, 6).map((item) => (
+                          <li key={item.code}>{item.title}</li>
+                        ))}
                         {data.comparison.introduced.length === 0 ? <li>None</li> : null}
                       </ul>
                     </div>
                     <div>
                       <p className="font-medium">Unchanged</p>
-                      <p className="mt-1 text-muted-foreground">{data.comparison.unchanged} findings</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {data.comparison.unchanged} findings
+                      </p>
                     </div>
                   </div>
                 </Section>
               ) : null}
 
-              {Array.isArray(data.report?.action_plan) && (data.report!.action_plan as any[]).length > 0 ? (
-                <Section title="Action plan" description="Ordered by the deterministic priority score, explained by AI from the stored findings.">
+              {actionPlan.length > 0 ? (
+                <Section
+                  title="Action plan"
+                  description="Ordered by the deterministic priority score, explained by AI from the stored findings."
+                >
                   <ol className="space-y-2">
-                    {(data.report!.action_plan as any[]).map((item, index) => (
-                      <li key={`${item.findingCode}-${index}`} className="rounded-lg border border-border px-3 py-2 text-sm">
+                    {actionPlan.map((item, index) => (
+                      <li
+                        key={`${item.findingCode}-${index}`}
+                        className="rounded-lg border border-border px-3 py-2 text-sm"
+                      >
                         <p className="font-medium">
                           {index + 1}. {item.problem}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">Why it matters: {item.impact}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Why it matters: {item.impact}
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">Do this: {item.action}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Objective: {item.expectedObjective}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Objective: {item.expectedObjective}
+                        </p>
                         <button
                           type="button"
                           className="press mt-2 text-xs underline underline-offset-2"
@@ -553,7 +703,9 @@ function ScansPage() {
                         onClick={() => setFindingFilter(option)}
                         className={cn(
                           "press rounded-full border border-border px-2.5 py-1 text-[11px] capitalize",
-                          findingFilter === option ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                          findingFilter === option
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground",
                         )}
                       >
                         {option}
@@ -563,21 +715,31 @@ function ScansPage() {
                 }
               >
                 {(() => {
-                  const visible = (data.findings as any[]).filter((finding) => {
+                  const visible = data.findings.filter((finding) => {
                     if (findingFilter === "all") return true;
-                    if (["critical", "high", "medium", "low"].includes(findingFilter)) return finding.severity === findingFilter;
-                    if (findingFilter === "open" || findingFilter === "resolved") return (finding.status ?? "open") === findingFilter;
+                    if (["critical", "high", "medium", "low"].includes(findingFilter))
+                      return finding.severity === findingFilter;
+                    if (findingFilter === "open" || findingFilter === "resolved")
+                      return (finding.status ?? "open") === findingFilter;
                     return (finding.change_state ?? "new") === findingFilter;
                   });
                   if (data.findings.length === 0) {
-                    return <p className="text-sm text-muted-foreground">No issues were detected in what could be measured.</p>;
+                    return (
+                      <p className="text-sm text-muted-foreground">
+                        No issues were detected in what could be measured.
+                      </p>
+                    );
                   }
                   if (visible.length === 0) {
-                    return <p className="text-sm text-muted-foreground">No findings match this filter.</p>;
+                    return (
+                      <p className="text-sm text-muted-foreground">
+                        No findings match this filter.
+                      </p>
+                    );
                   }
                   return (
                     <ul className="stagger space-y-2">
-                      {visible.map((finding: any) => (
+                      {visible.map((finding) => (
                         <li
                           key={finding.code}
                           className={cn(
@@ -589,47 +751,92 @@ function ScansPage() {
                             type="button"
                             className="press flex w-full items-start gap-3 px-3 py-2 text-left"
                             aria-expanded={openFinding === finding.code}
-                            onClick={() => setOpenFinding(openFinding === finding.code ? null : finding.code)}
+                            onClick={() =>
+                              setOpenFinding(openFinding === finding.code ? null : finding.code)
+                            }
                           >
                             <span className="icon-tile mt-0.5">
                               <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block text-sm font-medium">
-                                {finding.priority_rank ? <span className="text-muted-foreground">#{finding.priority_rank} </span> : null}
+                                {finding.priority_rank ? (
+                                  <span className="text-muted-foreground">
+                                    #{finding.priority_rank}{" "}
+                                  </span>
+                                ) : null}
                                 {finding.title}
                               </span>
-                              <span className="block text-xs text-muted-foreground">{finding.detail}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {finding.detail}
+                              </span>
                             </span>
                             {finding.change_state && finding.change_state !== "unchanged" ? (
-                              <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] uppercase">
+                              <Badge
+                                variant="outline"
+                                className="h-5 shrink-0 px-1.5 text-[10px] uppercase"
+                              >
                                 {finding.change_state}
                               </Badge>
                             ) : null}
-                            <Badge variant="outline" className={cn("h-5 shrink-0 px-1.5 text-[10px] uppercase", SEVERITY_TONE[finding.severity])}>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "h-5 shrink-0 px-1.5 text-[10px] uppercase",
+                                SEVERITY_TONE[finding.severity],
+                              )}
+                            >
                               {finding.severity}
                             </Badge>
-                            <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", openFinding === finding.code && "rotate-180")} />
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 shrink-0 transition-transform",
+                                openFinding === finding.code && "rotate-180",
+                              )}
+                            />
                           </button>
                           {openFinding === finding.code ? (
                             <div className="animate-fade-in border-t border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                              {finding.recommendation ? <p className="mb-2 text-foreground">Recommendation: {finding.recommendation}</p> : null}
+                              {finding.recommendation ? (
+                                <p className="mb-2 text-foreground">
+                                  Recommendation: {finding.recommendation}
+                                </p>
+                              ) : null}
                               <p>
-                                Source: {SOURCE_LABEL[finding.source] ?? finding.source} · Confidence: {finding.confidence ?? "measured"} · Impact: -{finding.impact}
-                                {finding.priority_score ? ` · Priority score: ${Number(finding.priority_score).toFixed(1)}` : ""} · Status: {finding.status ?? "open"}
+                                Source: {SOURCE_LABEL[finding.source] ?? finding.source} ·
+                                Confidence: {finding.confidence ?? "measured"} · Impact: -
+                                {finding.impact}
+                                {finding.priority_score
+                                  ? ` · Priority score: ${Number(finding.priority_score).toFixed(1)}`
+                                  : ""}{" "}
+                                · Status: {finding.status ?? "open"}
                               </p>
                               {finding.evidenceRecords?.length ? (
                                 <div className="mt-2 space-y-1">
-                                  <p className="text-[11px] font-medium uppercase text-foreground">Evidence ({finding.evidenceRecords.length})</p>
-                                  {finding.evidenceRecords.map((record: any, index: number) => (
-                                    <p key={`${record.sourceType}-${index}`} className="break-words rounded-md bg-muted/60 px-2 py-1 text-[11px]">
-                                      <span className="text-foreground">{record.sourceType.replace(/_/g, " ")}:</span> {record.value}
-                                      <span className="text-muted-foreground"> · {SOURCE_LABEL[record.source] ?? record.source} · observed {new Date(record.observedAt).toLocaleString()}</span>
+                                  <p className="text-[11px] font-medium uppercase text-foreground">
+                                    Evidence ({finding.evidenceRecords.length})
+                                  </p>
+                                  {finding.evidenceRecords.map((record, index) => (
+                                    <p
+                                      key={`${record.sourceType}-${index}`}
+                                      className="break-words rounded-md bg-muted/60 px-2 py-1 text-[11px]"
+                                    >
+                                      <span className="text-foreground">
+                                        {record.sourceType.replace(/_/g, " ")}:
+                                      </span>{" "}
+                                      {record.value}
+                                      <span className="text-muted-foreground">
+                                        {" "}
+                                        · {SOURCE_LABEL[record.source] ?? record.source} · observed{" "}
+                                        {new Date(record.observedAt).toLocaleString()}
+                                      </span>
                                     </p>
                                   ))}
                                 </div>
                               ) : (
-                                <p className="mt-2 text-[11px]">No separate evidence record was stored for this finding.</p>
+                                <p className="mt-2 text-[11px]">
+                                  No separate evidence record was stored for this finding.
+                                </p>
                               )}
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <Button
@@ -639,11 +846,16 @@ function ScansPage() {
                                   onClick={() =>
                                     triage.mutate({
                                       findingId: finding.id,
-                                      status: (finding.status ?? "open") === "resolved" ? "open" : "resolved",
+                                      status:
+                                        (finding.status ?? "open") === "resolved"
+                                          ? "open"
+                                          : "resolved",
                                     })
                                   }
                                 >
-                                  {(finding.status ?? "open") === "resolved" ? "Reopen" : "Mark resolved"}
+                                  {(finding.status ?? "open") === "resolved"
+                                    ? "Reopen"
+                                    : "Mark resolved"}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -652,11 +864,16 @@ function ScansPage() {
                                   onClick={() =>
                                     triage.mutate({
                                       findingId: finding.id,
-                                      status: (finding.status ?? "open") === "ignored" ? "open" : "ignored",
+                                      status:
+                                        (finding.status ?? "open") === "ignored"
+                                          ? "open"
+                                          : "ignored",
                                     })
                                   }
                                 >
-                                  {(finding.status ?? "open") === "ignored" ? "Un-ignore" : "Ignore"}
+                                  {(finding.status ?? "open") === "ignored"
+                                    ? "Un-ignore"
+                                    : "Ignore"}
                                 </Button>
                                 <Button
                                   size="sm"
@@ -683,26 +900,35 @@ function ScansPage() {
               </Section>
 
               <Section
-                title={`Source conflicts (${(data.conflicts ?? []).filter((row: any) => row.status === "open").length} open)`}
+                title={`Source conflicts (${(data.conflicts ?? []).filter((row) => row.status === "open").length} open)`}
                 description="Where two sources disagree about the same detail. Neither value is chosen automatically."
               >
                 {(data.conflicts ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No disagreement was found between the sources that could be read.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No disagreement was found between the sources that could be read.
+                  </p>
                 ) : (
                   <ul className="space-y-2">
-                    {(data.conflicts as any[]).map((row) => (
-                      <li key={`${row.field_key}-${row.source_a}-${row.source_b}`} className="rounded-lg border border-border px-3 py-2 text-xs">
+                    {data.conflicts.map((row) => (
+                      <li
+                        key={`${row.field_key}-${row.source_a}-${row.source_b}`}
+                        className="rounded-lg border border-border px-3 py-2 text-xs"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium capitalize">{row.field_key.replace(/_/g, " ")}</span>
+                          <span className="text-sm font-medium capitalize">
+                            {row.field_key.replace(/_/g, " ")}
+                          </span>
                           <Badge variant="outline" className="h-5 px-1.5 text-[10px] uppercase">
                             {row.status}
                           </Badge>
                         </div>
                         <p className="mt-1 break-words text-muted-foreground">
-                          {row.source_a}: <span className="text-foreground">{row.value_a}</span> · observed {new Date(row.observed_a_at).toLocaleString()}
+                          {row.source_a}: <span className="text-foreground">{row.value_a}</span> ·
+                          observed {new Date(row.observed_a_at).toLocaleString()}
                         </p>
                         <p className="break-words text-muted-foreground">
-                          {row.source_b}: <span className="text-foreground">{row.value_b}</span> · observed {new Date(row.observed_b_at).toLocaleString()}
+                          {row.source_b}: <span className="text-foreground">{row.value_b}</span> ·
+                          observed {new Date(row.observed_b_at).toLocaleString()}
                         </p>
                       </li>
                     ))}
@@ -715,7 +941,9 @@ function ScansPage() {
                 description="One canonical record per detail and source, with the origin, confidence and last verification kept."
               >
                 {(data.facts ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No business detail could be read from the available sources.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No business detail could be read from the available sources.
+                  </p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -729,18 +957,31 @@ function ScansPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {(data.facts as any[]).map((fact) => (
-                          <tr key={`${fact.field_key}-${fact.source_provider}`} className="border-t border-border/60 align-top">
-                            <td className="py-1 pr-3 capitalize text-muted-foreground">{fact.field_key.replace(/_/g, " ")}</td>
+                        {data.facts.map((fact) => (
+                          <tr
+                            key={`${fact.field_key}-${fact.source_provider}`}
+                            className="border-t border-border/60 align-top"
+                          >
+                            <td className="py-1 pr-3 capitalize text-muted-foreground">
+                              {fact.field_key.replace(/_/g, " ")}
+                            </td>
                             <td className="max-w-[22rem] break-words py-1 pr-3">
                               {fact.value_raw ?? fact.value_normalized}
                               {fact.previous_value ? (
-                                <span className="block text-[11px] text-muted-foreground">was: {fact.previous_value}</span>
+                                <span className="block text-[11px] text-muted-foreground">
+                                  was: {fact.previous_value}
+                                </span>
                               ) : null}
                             </td>
-                            <td className="py-1 pr-3 text-muted-foreground">{fact.source_provider}</td>
-                            <td className="py-1 pr-3 uppercase text-muted-foreground">{fact.confidence}</td>
-                            <td className="py-1 text-muted-foreground">{new Date(fact.last_verified_at).toLocaleString()}</td>
+                            <td className="py-1 pr-3 text-muted-foreground">
+                              {fact.source_provider}
+                            </td>
+                            <td className="py-1 pr-3 uppercase text-muted-foreground">
+                              {fact.confidence}
+                            </td>
+                            <td className="py-1 text-muted-foreground">
+                              {new Date(fact.last_verified_at).toLocaleString()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -749,9 +990,10 @@ function ScansPage() {
                 )}
               </Section>
 
-
-
-              <Section title={`Measurements (${data.metrics.length})`} description="Normalized values taken straight from the collected data.">
+              <Section
+                title={`Measurements (${data.metrics.length})`}
+                description="Normalized values taken straight from the collected data."
+              >
                 {data.metrics.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Data unavailable.</p>
                 ) : (
@@ -766,15 +1008,20 @@ function ScansPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {data.metrics.map((metric: any) => (
-                          <tr key={`${metric.category}-${metric.metric_key}`} className="border-t border-border/60">
+                        {data.metrics.map((metric) => (
+                          <tr
+                            key={`${metric.category}-${metric.metric_key}`}
+                            className="border-t border-border/60"
+                          >
                             <td className="py-1 pr-3 text-muted-foreground">{metric.category}</td>
                             <td className="py-1 pr-3">{metric.metric_key.replace(/_/g, " ")}</td>
                             <td className="py-1 pr-3">
                               {metric.value_numeric ?? metric.value_text ?? "DATA NOT AVAILABLE"}
                               {metric.unit ? ` ${metric.unit}` : ""}
                             </td>
-                            <td className="py-1 text-muted-foreground">{SOURCE_LABEL[metric.source] ?? metric.source}</td>
+                            <td className="py-1 text-muted-foreground">
+                              {SOURCE_LABEL[metric.source] ?? metric.source}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

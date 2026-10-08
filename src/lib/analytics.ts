@@ -188,7 +188,11 @@ export function feedbackThemes(reviews: LiveReview[], limit = 10): Theme[] {
         mentions: e.all.length,
         sentiment,
         change,
-        kind: (sentiment >= 65 ? "positive" : sentiment >= 40 ? "neutral" : "negative") as Sentiment,
+        kind: (sentiment >= 65
+          ? "positive"
+          : sentiment >= 40
+            ? "neutral"
+            : "negative") as Sentiment,
       };
     })
     .sort((a, b) => b.mentions - a.mentions)
@@ -204,8 +208,7 @@ export function responseTimeHours(reviews: LiveReview[]): number | null {
   const answered = reviews.filter((r) => r.replied_at);
   if (answered.length === 0) return null;
   const totals = answered.reduce((sum, r) => {
-    const delta =
-      new Date(r.replied_at!).getTime() - new Date(r.external_created_at).getTime();
+    const delta = new Date(r.replied_at!).getTime() - new Date(r.external_created_at).getTime();
     return sum + Math.max(delta, 0);
   }, 0);
   return round1(totals / answered.length / 3_600_000);

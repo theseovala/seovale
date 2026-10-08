@@ -25,7 +25,6 @@ export const Route = createFileRoute("/api/public/removal-scan")({
           if (denied) return denied;
         }
 
-
         const { runRemovalScan } = await import("@/lib/removal-scan.server");
         const now = new Date();
 
@@ -73,7 +72,8 @@ export const Route = createFileRoute("/api/public/removal-scan")({
               .eq("workspace_id", row.workspace_id);
             results.push({ workspace_id: row.workspace_id, ...outcome });
           } catch (scanError) {
-            const message = scanError instanceof Error ? scanError.message : "Scheduled scan failed";
+            const message =
+              scanError instanceof Error ? scanError.message : "Scheduled scan failed";
             // Circuit breaker: credit, policy or access failures pause the job
             // until the workspace owner resumes it.
             const terminal = /402|403|credit|insufficient|not allowed|denied/i.test(message);

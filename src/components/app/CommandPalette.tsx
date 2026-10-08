@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { useNavigate, type RegisteredRouter, type ToPathOption } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Radar, Search } from "lucide-react";
 import {
@@ -18,12 +18,20 @@ import { navItems } from "./nav-items";
  * Global command palette. Every entry maps to a real route or a real record —
  * no simulated actions.
  */
-export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function CommandPalette({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const navigate = useNavigate();
   const scans = useQuery({ queryKey: ["scans"], queryFn: () => listScans(), enabled: open });
-  const recentScans = useMemo<
-    { id: string; target_domain: string; target_url: string; status: string }[]
-  >(() => ((scans.data as any[]) ?? []).slice(0, 8), [scans.data]);
+  const recentScans = useMemo(() => (scans.data ?? []).slice(0, 8), [scans.data]);
+
+  function goToPage(to: ToPathOption<RegisteredRouter>) {
+    go(() => void navigate({ to }));
+  }
 
   function go(fn: () => void) {
     onOpenChange(false);
@@ -49,7 +57,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
             <CommandItem
               key={item.id}
               value={`${item.label} ${item.id}`}
-              onSelect={() => go(() => void navigate({ to: item.to }))}
+              onSelect={() => goToPage(item.to)}
             >
               <item.icon /> {item.label}
             </CommandItem>
@@ -80,20 +88,4 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       </CommandList>
     </CommandDialog>
   );
-}
-
-/** Opens the palette on Cmd/Ctrl+K anywhere in the app shell. */
-export function useCommandPalette() {
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
-        event.preventDefault();
-        setOpen((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-  return { open, setOpen };
 }

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-type Ctx = { supabase: any; userId: string };
+type Ctx = import("./backend-types").AuthContext;
 
 async function workspace(context: Ctx) {
   const { data, error } = await context.supabase
@@ -39,7 +39,9 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
       .eq("provider", "trustpilot")
       .maybeSingle();
     if (!connection?.account_ref || connection.status !== "connected") {
-      throw new Error("Connect Trustpilot in the Integration Manager first (save the key, set your business domain and verify).");
+      throw new Error(
+        "Connect Trustpilot in the Integration Manager first (save the key, set your business domain and verify).",
+      );
     }
 
     const { data: run, error: runError } = await context.supabase
@@ -51,7 +53,9 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
 
     const startedAt = Date.now();
     try {
-      const url = new URL(`https://api.trustpilot.com/v1/business-units/${encodeURIComponent(connection.account_ref)}/reviews`);
+      const url = new URL(
+        `https://api.trustpilot.com/v1/business-units/${encodeURIComponent(connection.account_ref)}/reviews`,
+      );
       url.searchParams.set("apikey", apiKey);
       url.searchParams.set("perPage", "100");
       const response = await fetch(url.toString(), { headers: { accept: "application/json" } });
@@ -64,8 +68,14 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
         endpoint: "/v1/business-units/{id}/reviews",
         http_status: response.status,
         duration_ms: Date.now() - startedAt,
-        outcome_code: response.ok ? "CONNECTED" : response.status === 401 || response.status === 403 ? "INVALID_CREDENTIALS" : "PROVIDER_ERROR",
-        error_message: response.ok ? null : (payload?.message ?? `Trustpilot returned HTTP ${response.status}`),
+        outcome_code: response.ok
+          ? "CONNECTED"
+          : response.status === 401 || response.status === 403
+            ? "INVALID_CREDENTIALS"
+            : "PROVIDER_ERROR",
+        error_message: response.ok
+          ? null
+          : (payload?.message ?? `Trustpilot returned HTTP ${response.status}`),
       });
       if (!response.ok) {
         throw new Error(payload?.message ?? `Trustpilot sync failed with HTTP ${response.status}.`);
@@ -86,7 +96,8 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
         const rating = typeof review.stars === "number" ? review.stars : 0;
         if (!review.id || rating < 1) continue;
         const author = review.consumer?.displayName ?? "Trustpilot reviewer";
-        const body = [review.title, review.text].filter(Boolean).join(" — ") || "(no written review)";
+        const body =
+          [review.title, review.text].filter(Boolean).join(" — ") || "(no written review)";
         const createdAt = review.createdAt ?? new Date().toISOString();
         const sentiment = rating >= 4 ? "positive" : rating === 3 ? "neutral" : "negative";
         const priority = rating <= 2 ? "high" : rating === 3 ? "medium" : "low";
@@ -104,7 +115,16 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
         if (existing) {
           const { error: updateError } = await context.supabase
             .from("reviews")
-            .update({ author, rating, body, sentiment, priority, location_name: locationName, external_created_at: createdAt, ...(reply ? { reply } : {}) })
+            .update({
+              author,
+              rating,
+              body,
+              sentiment,
+              priority,
+              location_name: locationName,
+              external_created_at: createdAt,
+              ...(reply ? { reply } : {}),
+            })
             .eq("id", existing.id);
           if (updateError) throw updateError;
           storedReviewId = existing.id;
@@ -163,19 +183,36 @@ export const syncTrustpilotReviews = createServerFn({ method: "POST" })
       const now = new Date().toISOString();
       await context.supabase
         .from("sync_runs")
-        .update({ status: "completed", locations_found: 1, reviews_found: reviews.length, reviews_created: created, reviews_updated: updated, alerts_created: alerts, completed_at: now })
+        .update({
+          status: "completed",
+          locations_found: 1,
+          reviews_found: reviews.length,
+          reviews_created: created,
+          reviews_updated: updated,
+          alerts_created: alerts,
+          completed_at: now,
+        })
         .eq("id", run.id);
       await context.supabase
         .from("connected_platforms")
         .update({ status: "connected", last_synced_at: now, last_sync_error: null })
         .eq("workspace_id", member.workspace_id)
         .eq("platform", "trustpilot");
-      return { reviewsFound: reviews.length, reviewsCreated: created, reviewsUpdated: updated, alertsCreated: alerts };
+      return {
+        reviewsFound: reviews.length,
+        reviewsCreated: created,
+        reviewsUpdated: updated,
+        alertsCreated: alerts,
+      };
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Trustpilot sync failed";
       await context.supabase
         .from("sync_runs")
-        .update({ status: "failed", error_message: message, completed_at: new Date().toISOString() })
+        .update({
+          status: "failed",
+          error_message: message,
+          completed_at: new Date().toISOString(),
+        })
         .eq("id", run.id);
       await context.supabase
         .from("connected_platforms")

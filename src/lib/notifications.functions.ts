@@ -17,7 +17,7 @@ export interface AppNotification {
   createdAt: string;
 }
 
-async function workspaceId(supabase: any, userId: string) {
+async function workspaceId(supabase: import("./backend-types").DatabaseClient, userId: string) {
   const { data } = await supabase
     .from("workspace_members")
     .select("workspace_id")
@@ -40,10 +40,13 @@ export const listNotifications = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(30);
     if (error) throw new Error(error.message);
-    const items = (data ?? []).map((row: any) => ({
+    const items = (data ?? []).map((row): AppNotification => ({
       id: row.id,
       type: row.type,
-      severity: row.severity,
+      severity:
+        row.severity === "success" || row.severity === "warning" || row.severity === "critical"
+          ? row.severity
+          : "info",
       title: row.title,
       message: row.message,
       entityType: row.entity_type,

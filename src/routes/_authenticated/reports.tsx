@@ -4,11 +4,32 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, FileText, Loader2, Sparkles } from "lucide-react";
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip } from "recharts";
+import {
+  AreaChart,
+  Area,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RTooltip,
+} from "recharts";
 import { AppShell } from "@/components/app/AppShell";
-import { PageHeader, Section, Stars, Trend, PlatformIcon, EmptyState } from "@/components/app/primitives";
+import {
+  PageHeader,
+  Section,
+  Stars,
+  Trend,
+  PlatformIcon,
+  EmptyState,
+} from "@/components/app/primitives";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useApp } from "@/lib/app-context";
 import { useReports, useLiveReviews } from "@/lib/seovale-db";
 import { monthlyTrend, platformPerformance, locationStats } from "@/lib/analytics";
@@ -83,15 +104,23 @@ function ReportsPage() {
         description="Generate AI-written reputation reports from your live review data, formatted for presentation."
       />
 
-      <Section className="mb-4" title="Generate a report" description="Pick a period and scope; the summary is written from your stored reviews">
+      <Section
+        className="mb-4"
+        title="Generate a report"
+        description="Pick a period and scope; the summary is written from your stored reviews"
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <p className="mb-1.5 text-xs font-semibold text-muted-foreground">Period</p>
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {PERIODS.map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -99,15 +128,22 @@ function ReportsPage() {
           <div>
             <p className="mb-1.5 text-xs font-semibold text-muted-foreground">Scope</p>
             <Select value={scope} onValueChange={setScope}>
-              <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 {locationNames.map((l) => (
-                  <SelectItem key={l} value={l}>{l}</SelectItem>
+                  <SelectItem key={l} value={l}>
+                    {l}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || loadingReviews || !reviews?.length}>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || loadingReviews || !reviews?.length}
+          >
             {mutation.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
             Generate report
           </Button>
@@ -123,31 +159,62 @@ function ReportsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Rating & score trend" description="Last 6 months, all reviews">
           {!loadingReviews && (!reviews || reviews.length === 0) ? (
-            <EmptyState icon={FileText} title="No verified review data" description="Connect and sync a review source before generating reports or trends." />
+            <EmptyState
+              icon={FileText}
+              title="No verified review data"
+              description="Connect and sync a review source before generating reports or trends."
+            />
           ) : (
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend} margin={{ left: -20, right: 8, top: 8 }}>
-                <defs>
-                  <linearGradient id="rep" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                <YAxis domain={[0, 5]} tickLine={false} axisLine={false} fontSize={12} stroke="var(--muted-foreground)" />
-                <RTooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} />
-                <Area type="monotone" dataKey="rating" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#rep)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend} margin={{ left: -20, right: 8, top: 8 }}>
+                  <defs>
+                    <linearGradient id="rep" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
+                      <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <YAxis
+                    domain={[0, 5]}
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={12}
+                    stroke="var(--muted-foreground)"
+                  />
+                  <RTooltip
+                    contentStyle={{
+                      background: "var(--popover)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 12,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="rating"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2.5}
+                    fill="url(#rep)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </Section>
 
         <Section title="Platform performance" bodyClassName="p-0">
           {loadingReviews ? (
-            <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="size-5 animate-spin" />
+            </div>
           ) : platformStats.length === 0 ? (
             <p className="p-5 text-sm text-muted-foreground">No review data yet.</p>
           ) : (
@@ -164,8 +231,18 @@ function ReportsPage() {
                 <tbody className="divide-y">
                   {platformStats.map((p) => (
                     <tr key={p.id}>
-                      <td className="px-4 py-2.5"><span className="flex items-center gap-2 font-medium"><PlatformIcon id={p.id} size="sm" />{platforms[p.id].name}</span></td>
-                      <td className="px-4 py-2.5"><span className="flex items-center gap-2"><span className="tabular-nums">{p.rating}</span><Stars value={p.rating} size={10} /></span></td>
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2 font-medium">
+                          <PlatformIcon id={p.id} size="sm" />
+                          {platforms[p.id].name}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-2">
+                          <span className="tabular-nums">{p.rating}</span>
+                          <Stars value={p.rating} size={10} />
+                        </span>
+                      </td>
                       <td className="px-4 py-2.5 tabular-nums">{p.reviews.toLocaleString()}</td>
                       <td className="px-4 py-2.5 tabular-nums">{p.response}%</td>
                     </tr>
@@ -179,7 +256,9 @@ function ReportsPage() {
 
       <Section className="mt-4" title="Location comparison">
         {locStats.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No locations with reviews yet.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No locations with reviews yet.
+          </p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {locStats.map((l) => (
@@ -188,9 +267,14 @@ function ReportsPage() {
                   <p className="text-sm font-semibold">{l.name}</p>
                   <Trend value={l.trend} suffix="" />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{l.reviews.toLocaleString()} reviews · {l.rating}★ · {l.responseRate}% answered</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {l.reviews.toLocaleString()} reviews · {l.rating}★ · {l.responseRate}% answered
+                </p>
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${l.score}%` }} />
+                  <div
+                    className="h-full rounded-full bg-gradient-brand"
+                    style={{ width: `${l.score}%` }}
+                  />
                 </div>
               </div>
             ))}
@@ -198,23 +282,52 @@ function ReportsPage() {
         )}
       </Section>
 
-      <Section className="mt-4" title="Report library" description="Reports generated for this workspace" bodyClassName="p-0">
+      <Section
+        className="mt-4"
+        title="Report library"
+        description="Reports generated for this workspace"
+        bodyClassName="p-0"
+      >
         {loadingReports ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 className="size-5 animate-spin" /></div>
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" />
+          </div>
         ) : !reports || reports.length === 0 ? (
-          <EmptyState icon={FileText} title="No reports yet" description="Generate your first report above to see it saved here." />
+          <EmptyState
+            icon={FileText}
+            title="No reports yet"
+            description="Generate your first report above to see it saved here."
+          />
         ) : (
           <ul className="divide-y">
             {reports.map((r) => (
               <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-4">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary"><FileText className="size-5" /></span>
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary">
+                  <FileText className="size-5" />
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold">{r.title}</span>
-                  <span className="block text-xs text-muted-foreground">{r.period} · {r.scope}</span>
-                  {r.summary && <span className="mt-1 block whitespace-pre-line text-xs text-muted-foreground line-clamp-3">{r.summary}</span>}
+                  <span className="block text-xs text-muted-foreground">
+                    {r.period} · {r.scope}
+                  </span>
+                  {r.summary && (
+                    <span className="mt-1 block whitespace-pre-line text-xs text-muted-foreground line-clamp-3">
+                      {r.summary}
+                    </span>
+                  )}
                 </span>
-                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${r.status === "ready" ? "bg-positive-soft text-positive" : "bg-info-soft text-info"}`}>{r.status}</span>
-                <Button size="icon" variant="ghost" title="Download PDF" disabled={exportMutation.isPending} onClick={() => exportMutation.mutate(r.id)}>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${r.status === "ready" ? "bg-positive-soft text-positive" : "bg-info-soft text-info"}`}
+                >
+                  {r.status}
+                </span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  title="Download PDF"
+                  disabled={exportMutation.isPending}
+                  onClick={() => exportMutation.mutate(r.id)}
+                >
                   {exportMutation.isPending ? <Loader2 className="animate-spin" /> : <Download />}
                   <span className="sr-only">Download PDF</span>
                 </Button>

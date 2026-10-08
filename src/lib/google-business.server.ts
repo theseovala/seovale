@@ -13,7 +13,9 @@ function base64Url(bytes: Uint8Array) {
 }
 
 async function encryptionKey() {
-  const raw = createHash("sha256").update(requiredEnv("GOOGLE_BUSINESS_TOKEN_ENCRYPTION_KEY")).digest();
+  const raw = createHash("sha256")
+    .update(requiredEnv("GOOGLE_BUSINESS_TOKEN_ENCRYPTION_KEY"))
+    .digest();
   return webcrypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
@@ -42,8 +44,14 @@ export function hashValue(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-const ALLOWED_HOST_SUFFIXES = [".lovable.app", ".lovableproject.com", ".lovable.dev", "seovale.com"];
-const STABLE_PREVIEW_ORIGIN = "https://id-preview--3909161c-29f3-4466-a802-1204f20720c3.lovable.app";
+const ALLOWED_HOST_SUFFIXES = [
+  ".lovable.app",
+  ".lovableproject.com",
+  ".lovable.dev",
+  "seovale.com",
+];
+const STABLE_PREVIEW_ORIGIN =
+  "https://id-preview--3909161c-29f3-4466-a802-1204f20720c3.lovable.app";
 
 export function assertAllowedOrigin(origin: string) {
   const url = new URL(origin);
@@ -51,7 +59,9 @@ export function assertAllowedOrigin(origin: string) {
   if (url.protocol !== "https:" && !local) throw new Error("Google connection requires HTTPS.");
   const allowed =
     local ||
-    ALLOWED_HOST_SUFFIXES.some((suffix) => url.hostname === suffix.replace(/^\./, "") || url.hostname.endsWith(suffix));
+    ALLOWED_HOST_SUFFIXES.some(
+      (suffix) => url.hostname === suffix.replace(/^\./, "") || url.hostname.endsWith(suffix),
+    );
   if (!allowed) throw new Error("This origin is not allowed.");
   return url.origin;
 }
@@ -86,7 +96,12 @@ export function createGoogleAuthorization(redirectUri: string, creds: Creds = {}
   return { state, verifier, url: url.toString() };
 }
 
-export async function exchangeGoogleCode(code: string, verifier: string, redirectUri: string, creds: Creds = {}) {
+export async function exchangeGoogleCode(
+  code: string,
+  verifier: string,
+  redirectUri: string,
+  creds: Creds = {},
+) {
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },

@@ -32,9 +32,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-export { navItems } from "./nav-items";
 import { navItems, navGroups } from "./nav-items";
-import { CommandPalette, useCommandPalette } from "./CommandPalette";
+import { CommandPalette } from "./CommandPalette";
+import { useCommandPalette } from "./use-command-palette";
 import { NotificationBell } from "./NotificationBell";
 
 function NavList({
@@ -155,7 +155,9 @@ function SidebarInner({
           <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-sidebar-muted/80">
             Workspace
           </p>
-          <p className="truncate text-xs font-semibold text-sidebar-accent-foreground">{brandName}</p>
+          <p className="truncate text-xs font-semibold text-sidebar-accent-foreground">
+            {brandName}
+          </p>
         </div>
       )}
       <div className="scrollbar-thin flex-1 overflow-y-auto py-3">
@@ -214,7 +216,13 @@ function TopBar({
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-1.5 border-b bg-background/85 px-3 shadow-[0_1px_0_0_color-mix(in_oklab,var(--border)_60%,transparent)] backdrop-blur-xl md:gap-2 md:px-5">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open navigation">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        onClick={onMenu}
+        aria-label="Open navigation"
+      >
         <Menu />
       </Button>
       <Button
@@ -243,7 +251,9 @@ function TopBar({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">Switch location</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">
+            Switch location
+          </DropdownMenuLabel>
           <DropdownMenuRadioGroup value={location} onValueChange={setLocation}>
             {locationNames.map((l) => (
               <DropdownMenuRadioItem key={l} value={l} className="gap-2">
@@ -280,7 +290,6 @@ function TopBar({
           </Link>
         </Button>
         <NotificationBell />
-
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -322,7 +331,10 @@ function Breadcrumbs({ pathname }: { pathname: string }) {
   const item = navItems.find((n) => pathname.startsWith(n.to));
   if (!item) return null;
   return (
-    <nav aria-label="Breadcrumb" className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+    <nav
+      aria-label="Breadcrumb"
+      className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground"
+    >
       <Link to="/dashboard" className="transition-colors hover:text-foreground">
         Home
       </Link>
@@ -341,7 +353,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: reviews } = useLiveReviews();
   const { data: alerts } = useLiveAlerts();
   const palette = useCommandPalette();
-
 
   // Restore the user's choice, and auto-collapse on narrow/half-screen laptops.
   useEffect(() => {
@@ -365,7 +376,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const counts: Record<string, number> = {
     reviews: (reviews ?? []).filter((r) => r.unread).length,
-    responses: (reviews ?? []).filter((r) => r.status === "pending" || r.status === "escalated").length,
+    responses: (reviews ?? []).filter((r) => r.status === "pending" || r.status === "escalated")
+      .length,
     alerts: (alerts ?? []).filter((a) => !a.resolved).length,
   };
 
@@ -387,7 +399,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="w-[276px] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground [&>button]:text-sidebar-foreground"
           >
             <SheetTitle className="sr-only">Navigation</SheetTitle>
-            <SidebarInner collapsed={false} counts={counts} onNavigate={() => setMobileOpen(false)} />
+            <SidebarInner
+              collapsed={false}
+              counts={counts}
+              onNavigate={() => setMobileOpen(false)}
+            />
           </SheetContent>
         </Sheet>
 
@@ -410,8 +426,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </main>
           <footer className="flex flex-col gap-1.5 border-t px-4 py-3 text-[11px] text-muted-foreground md:flex-row md:items-center md:justify-between md:px-6">
             <p>
-              <span className="font-semibold text-foreground">{BRAND.name}</span> — Your reputation, one
-              command center.
+              <span className="font-semibold text-foreground">{BRAND.name}</span> — Your reputation,
+              one command center.
             </p>
             <p>All figures are calculated from your connected review data.</p>
           </footer>

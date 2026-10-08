@@ -9,13 +9,7 @@ export const BRAND = {
 } as const;
 
 export type PlatformId =
-  | "google"
-  | "facebook"
-  | "instagram"
-  | "youtube"
-  | "trustpilot"
-  | "yelp"
-  | "tripadvisor";
+  "google" | "facebook" | "instagram" | "youtube" | "trustpilot" | "yelp" | "tripadvisor";
 
 export const platforms: Record<PlatformId, { name: string; short: string; color: string }> = {
   google: { name: "Google Reviews", short: "G", color: "oklch(0.62 0.18 255)" },

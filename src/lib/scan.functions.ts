@@ -3,8 +3,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { record } from "./backend-types";
 
-type Ctx = { supabase: any; userId: string };
+type Ctx = import("./backend-types").AuthContext;
 
 async function workspace(context: Ctx) {
   const { data, error } = await context.supabase
@@ -53,7 +54,13 @@ export const createScan = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (active) return { id: active.id as string, url: active.target_url as string, domain: active.target_domain as string, reused: true };
+    if (active)
+      return {
+        id: active.id as string,
+        url: active.target_url as string,
+        domain: active.target_domain as string,
+        reused: true,
+      };
     const { data: row, error } = await (context as Ctx).supabase
       .from("scans")
       .insert({
@@ -74,7 +81,11 @@ export const runScanNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { data: scan, error } = await (context as Ctx).supabase.from("scans").select("id,status").eq("id", data.id).single();
+    const { data: scan, error } = await (context as Ctx).supabase
+      .from("scans")
+      .select("id,status")
+      .eq("id", data.id)
+      .single();
     if (error) throw error;
     if (!scan) throw new Error("Scan not found.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -83,7 +94,14 @@ export const runScanNow = createServerFn({ method: "POST" })
       return await runScan(supabaseAdmin, data.id);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
-      await supabaseAdmin.from("scans").update({ status: "failed", error_message: message.slice(0, 500), completed_at: new Date().toISOString() }).eq("id", data.id);
+      await supabaseAdmin
+        .from("scans")
+        .update({
+          status: "failed",
+          error_message: message.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", data.id);
       throw caught;
     }
   });
@@ -127,11 +145,20 @@ export const resumeScan = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const supabase = (context as Ctx).supabase;
-    const { data: scan, error } = await supabase.from("scans").select("id,status,attempts,max_attempts").eq("id", data.id).single();
+    const { data: scan, error } = await supabase
+      .from("scans")
+      .select("id,status,attempts,max_attempts")
+      .eq("id", data.id)
+      .single();
     if (error) throw error;
-    if (!["paused", "failed", "cancelled"].includes(scan.status)) throw new Error("Only a paused, failed or cancelled scan can be resumed.");
-    if (scan.max_attempts && scan.attempts >= scan.max_attempts) throw new Error("This scan reached its maximum number of attempts.");
-    await supabase.from("scans").update({ status: "retrying", error_message: null, completed_at: null }).eq("id", data.id);
+    if (!["paused", "failed", "cancelled"].includes(scan.status))
+      throw new Error("Only a paused, failed or cancelled scan can be resumed.");
+    if (scan.max_attempts && scan.attempts >= scan.max_attempts)
+      throw new Error("This scan reached its maximum number of attempts.");
+    await supabase
+      .from("scans")
+      .update({ status: "retrying", error_message: null, completed_at: null })
+      .eq("id", data.id);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { runScan } = await import("@/lib/scan/engine.server");
     try {
@@ -140,7 +167,11 @@ export const resumeScan = createServerFn({ method: "POST" })
       const message = caught instanceof Error ? caught.message : String(caught);
       await supabaseAdmin
         .from("scans")
-        .update({ status: "failed", error_message: message.slice(0, 500), completed_at: new Date().toISOString() })
+        .update({
+          status: "failed",
+          error_message: message.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        })
         .eq("id", data.id);
       throw caught;
     }
@@ -152,13 +183,24 @@ export const deleteScan = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const supabase = (context as Ctx).supabase;
     // RLS check first: the caller must be able to see this scan.
-    const { data: scan, error } = await supabase.from("scans").select("id,workspace_id").eq("id", data.id).single();
+    const { data: scan, error } = await supabase
+      .from("scans")
+      .select("id,workspace_id")
+      .eq("id", data.id)
+      .single();
     if (error) throw error;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     // finding_evidence cascades with its finding; business_facts and
     // data_conflicts survive on purpose — they belong to the business, not to
     // one scan, and their scan link is cleared by the foreign key.
-    const derived = ["finding_evidence", "scan_findings", "scan_metrics", "scan_sources", "scan_reports", "provider_raw_data"] as const;
+    const derived = [
+      "finding_evidence",
+      "scan_findings",
+      "scan_metrics",
+      "scan_sources",
+      "scan_reports",
+      "provider_raw_data",
+    ] as const;
     for (const table of derived) {
       await supabaseAdmin.from(table).delete().eq("scan_id", scan.id);
     }
@@ -178,7 +220,9 @@ export const listScans = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await (context as Ctx).supabase
       .from("scans")
-      .select("id,target_url,target_domain,status,score,duration_ms,error_message,created_at,completed_at")
+      .select(
+        "id,target_url,target_domain,status,score,duration_ms,error_message,created_at,completed_at",
+      )
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) throw error;
@@ -192,45 +236,95 @@ export const getScan = createServerFn({ method: "GET" })
     const supabase = (context as Ctx).supabase;
     const { data: scan, error } = await supabase
       .from("scans")
-      .select("id,target_url,target_domain,status,score,duration_ms,error_message,created_at,started_at,completed_at")
+      .select(
+        "id,target_url,target_domain,status,score,duration_ms,error_message,created_at,started_at,completed_at",
+      )
       .eq("id", data.id)
       .single();
     if (error) throw error;
 
-    const [sources, metrics, findings, report, stages, facts, conflicts, evidence] = await Promise.all([
-      supabase.from("scan_sources").select("source,provider,status,http_status,duration_ms,error_message,created_at").eq("scan_id", data.id).order("source"),
-      supabase.from("scan_metrics").select("category,metric_key,value_numeric,value_text,unit,source").eq("scan_id", data.id).order("category"),
-      supabase.from("scan_findings").select("id,category,code,severity,title,detail,recommendation,impact,evidence,source,created_at,confidence,priority_score,priority_rank,status,change_state").eq("scan_id", data.id).order("priority_rank", { ascending: true, nullsFirst: false }),
-      supabase.from("scan_reports").select("score,category_scores,summary,model,created_at,sections,action_plan,historical,ai_status,ai_error,ai_latency_ms").eq("scan_id", data.id).maybeSingle(),
+    const [sources, metrics, findings, report, stages, facts, conflicts, evidence] =
+      await Promise.all([
+        supabase
+          .from("scan_sources")
+          .select("source,provider,status,http_status,duration_ms,error_message,created_at")
+          .eq("scan_id", data.id)
+          .order("source"),
+        supabase
+          .from("scan_metrics")
+          .select("category,metric_key,value_numeric,value_text,unit,source")
+          .eq("scan_id", data.id)
+          .order("category"),
+        supabase
+          .from("scan_findings")
+          .select(
+            "id,category,code,severity,title,detail,recommendation,impact,evidence,source,created_at,confidence,priority_score,priority_rank,status,change_state",
+          )
+          .eq("scan_id", data.id)
+          .order("priority_rank", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("scan_reports")
+          .select(
+            "score,category_scores,summary,model,created_at,sections,action_plan,historical,ai_status,ai_error,ai_latency_ms",
+          )
+          .eq("scan_id", data.id)
+          .maybeSingle(),
 
-      supabase.from("scan_stages").select("stage,label,position,status,detail,started_at,completed_at").eq("scan_id", data.id).order("position"),
-      supabase
-        .from("business_facts")
-        .select("field_key,value_normalized,value_raw,source_provider,source_type,source_url,confidence,retrieved_at,last_verified_at,previous_value,changed_at")
-        .eq("domain", scan.target_domain)
-        .order("field_key"),
-      supabase
-        .from("data_conflicts")
-        .select("field_key,source_a,value_a,observed_a_at,source_b,value_b,observed_b_at,status,detected_at,resolved_at")
-        .eq("domain", scan.target_domain)
-        .order("detected_at", { ascending: false }),
-      supabase
-        .from("finding_evidence")
-        .select("finding_id,source,source_type,reference,value,observed_at")
-        .eq("scan_id", data.id)
-        .order("observed_at"),
-    ]);
+        supabase
+          .from("scan_stages")
+          .select("stage,label,position,status,detail,started_at,completed_at")
+          .eq("scan_id", data.id)
+          .order("position"),
+        supabase
+          .from("business_facts")
+          .select(
+            "field_key,value_normalized,value_raw,source_provider,source_type,source_url,confidence,retrieved_at,last_verified_at,previous_value,changed_at",
+          )
+          .eq("domain", scan.target_domain)
+          .order("field_key"),
+        supabase
+          .from("data_conflicts")
+          .select(
+            "field_key,source_a,value_a,observed_a_at,source_b,value_b,observed_b_at,status,detected_at,resolved_at",
+          )
+          .eq("domain", scan.target_domain)
+          .order("detected_at", { ascending: false }),
+        supabase
+          .from("finding_evidence")
+          .select("finding_id,source,source_type,reference,value,observed_at")
+          .eq("scan_id", data.id)
+          .order("observed_at"),
+      ]);
 
     // Evidence is keyed by finding code so screen, report and CSV read the same rows.
-    const evidenceByCode = new Map<string, { source: string; sourceType: string; reference: string | null; value: string; observedAt: string }[]>();
-    for (const row of (evidence.data ?? []) as any[]) {
+    const evidenceByCode = new Map<
+      string,
+      {
+        source: string;
+        sourceType: string;
+        reference: string | null;
+        value: string;
+        observedAt: string;
+      }[]
+    >();
+    for (const row of evidence.data ?? []) {
+      if (!row.reference) continue;
       const list = evidenceByCode.get(row.reference) ?? [];
-      list.push({ source: row.source, sourceType: row.source_type, reference: row.reference, value: row.value, observedAt: row.observed_at });
+      list.push({
+        source: row.source,
+        sourceType: row.source_type,
+        reference: row.reference,
+        value: row.value,
+        observedAt: row.observed_at,
+      });
       evidenceByCode.set(row.reference, list);
     }
 
     const { freshnessOf } = await import("@/lib/scan/engine.server");
-    const sourceRows = (sources.data ?? []).map((row: any) => ({ ...row, freshness: freshnessOf(row.source, row.created_at) }));
+    const sourceRows = (sources.data ?? []).map((row) => ({
+      ...row,
+      freshness: freshnessOf(row.source, row.created_at),
+    }));
 
     // Historical comparison against the previous completed scan of the same domain.
     const { data: previous } = await supabase
@@ -243,7 +337,6 @@ export const getScan = createServerFn({ method: "GET" })
       .limit(1)
       .maybeSingle();
 
-
     let comparison: null | {
       previousScanId: string;
       previousScore: number | null;
@@ -253,34 +346,56 @@ export const getScan = createServerFn({ method: "GET" })
       unchanged: number;
     } = null;
     if (previous) {
-      const { data: previousFindings } = await supabase.from("scan_findings").select("code,title").eq("scan_id", previous.id);
-      const before = new Map<string, string>((previousFindings ?? []).map((f: any) => [String(f.code), String(f.title)]));
-      const now = new Map<string, string>((findings.data ?? []).map((f: any) => [String(f.code), String(f.title)]));
+      const { data: previousFindings } = await supabase
+        .from("scan_findings")
+        .select("code,title")
+        .eq("scan_id", previous.id);
+      const before = new Map<string, string>(
+        (previousFindings ?? []).map((f) => [String(f.code), String(f.title)]),
+      );
+      const now = new Map<string, string>(
+        (findings.data ?? []).map((f) => [String(f.code), String(f.title)]),
+      );
       comparison = {
         previousScanId: previous.id,
         previousScore: previous.score,
         previousAt: previous.created_at,
-        resolved: Array.from(before.entries()).filter(([code]) => !now.has(code)).map(([code, title]) => ({ code, title })),
-        introduced: Array.from(now.entries()).filter(([code]) => !before.has(code)).map(([code, title]) => ({ code, title })),
+        resolved: Array.from(before.entries())
+          .filter(([code]) => !now.has(code))
+          .map(([code, title]) => ({ code, title })),
+        introduced: Array.from(now.entries())
+          .filter(([code]) => !before.has(code))
+          .map(([code, title]) => ({ code, title })),
         unchanged: Array.from(now.keys()).filter((code) => before.has(code)).length,
       };
     }
 
+    const { parseActionPlan } = await import("./scan/ai-analysis.server");
     return {
       scan,
       sources: sourceRows,
       metrics: metrics.data ?? [],
-      findings: (findings.data ?? []).map((row: any) => ({ ...row, evidenceRecords: evidenceByCode.get(row.code) ?? [] })),
+      findings: (findings.data ?? []).map((row) => ({
+        ...row,
+        evidenceRecords: evidenceByCode.get(row.code) ?? [],
+      })),
       facts: facts.data ?? [],
       conflicts: conflicts.data ?? [],
-      report: report.data ?? null,
+      report: report.data
+        ? {
+            ...report.data,
+            action_plan:
+              report.data.action_plan === null ? null : parseActionPlan(report.data.action_plan),
+          }
+        : null,
       stages: stages.data ?? [],
       comparison,
     };
   });
 
 const csvCell = (value: unknown) => {
-  const text = value === null || value === undefined || value === "" ? "DATA NOT AVAILABLE" : String(value);
+  const text =
+    value === null || value === undefined || value === "" ? "DATA NOT AVAILABLE" : String(value);
   return `"${text.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
 };
 
@@ -290,16 +405,28 @@ export const exportScanCsv = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const supabase = (context as Ctx).supabase;
-    const { data: scan, error } = await supabase.from("scans").select("target_url,target_domain,status,score,created_at,completed_at").eq("id", data.id).single();
+    const { data: scan, error } = await supabase
+      .from("scans")
+      .select("target_url,target_domain,status,score,created_at,completed_at")
+      .eq("id", data.id)
+      .single();
     if (error) throw error;
     const [findings, metrics, sources] = await Promise.all([
       supabase
         .from("scan_findings")
-        .select("category,code,severity,title,detail,recommendation,impact,evidence,source,created_at,confidence,priority_rank,priority_score,status,change_state")
+        .select(
+          "category,code,severity,title,detail,recommendation,impact,evidence,source,created_at,confidence,priority_rank,priority_score,status,change_state",
+        )
         .eq("scan_id", data.id)
         .order("priority_rank", { ascending: true, nullsFirst: false }),
-      supabase.from("scan_metrics").select("category,metric_key,value_numeric,value_text,unit,source").eq("scan_id", data.id),
-      supabase.from("scan_sources").select("source,provider,status,http_status,duration_ms,error_message,created_at").eq("scan_id", data.id),
+      supabase
+        .from("scan_metrics")
+        .select("category,metric_key,value_numeric,value_text,unit,source")
+        .eq("scan_id", data.id),
+      supabase
+        .from("scan_sources")
+        .select("source,provider,status,http_status,duration_ms,error_message,created_at")
+        .eq("scan_id", data.id),
     ]);
 
     const lines: string[] = [];
@@ -322,8 +449,38 @@ export const exportScanCsv = createServerFn({ method: "POST" })
     const row = (cells: unknown[]) => lines.push(cells.map(csvCell).join(","));
 
     lines.push(header.map(csvCell).join(","));
-    row(["Scan", "target", "url", "", "", "", scan.status, "", scan.target_url, `Status: ${scan.status}`, "", "", "scan", scan.created_at]);
-    row(["Scan", "target", "score", "", "", "", "", "", scan.score ?? "", "0-100, derived from measured findings", "", "", "scan", scan.completed_at ?? ""]);
+    row([
+      "Scan",
+      "target",
+      "url",
+      "",
+      "",
+      "",
+      scan.status,
+      "",
+      scan.target_url,
+      `Status: ${scan.status}`,
+      "",
+      "",
+      "scan",
+      scan.created_at,
+    ]);
+    row([
+      "Scan",
+      "target",
+      "score",
+      "",
+      "",
+      "",
+      "",
+      "",
+      scan.score ?? "",
+      "0-100, derived from measured findings",
+      "",
+      "",
+      "scan",
+      scan.completed_at ?? "",
+    ]);
     for (const source of sources.data ?? []) {
       row([
         "Source",
@@ -375,12 +532,14 @@ export const exportScanCsv = createServerFn({ method: "POST" })
         finding.recommendation ?? "",
         JSON.stringify(finding.evidence ?? {}),
         finding.source,
-        (finding.evidence as any)?.collectedAt ?? finding.created_at,
+        record(finding.evidence)["collectedAt"] ?? finding.created_at,
       ]);
     }
-    return { filename: `seovale-scan-${scan.target_domain}-${new Date(scan.created_at).toISOString().slice(0, 10)}.csv`, csv: lines.join("\n") };
+    return {
+      filename: `seovale-scan-${scan.target_domain}-${new Date(scan.created_at).toISOString().slice(0, 10)}.csv`,
+      csv: lines.join("\n"),
+    };
   });
-
 
 /**
  * Finding triage. The status is stored on the finding row itself, scoped to the

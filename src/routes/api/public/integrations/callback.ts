@@ -10,18 +10,35 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
         const state = url.searchParams.get("state");
         const code = url.searchParams.get("code");
         const providerError = url.searchParams.get("error");
-        if (!state) return new Response("Authorization response is missing its state value.", { status: 400 });
+        if (!state)
+          return new Response("Authorization response is missing its state value.", {
+            status: 400,
+          });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { decryptValue, encryptValue, hashState } = await import("@/lib/integrations/crypto.server");
-        const { data: states } = await supabaseAdmin.rpc("claim_integration_oauth_state", { _state_hash: hashState(state) });
+        const { decryptValue, encryptValue, hashState } =
+          await import("@/lib/integrations/crypto.server");
+        const { data: states } = await supabaseAdmin.rpc("claim_integration_oauth_state", {
+          _state_hash: hashState(state),
+        });
         const saved = states?.[0];
-        if (!saved) return new Response("This authorization link expired. Start again from Settings.", { status: 400 });
+        if (!saved)
+          return new Response("This authorization link expired. Start again from Settings.", {
+            status: 400,
+          });
 
         const back = (status: string) =>
-          Response.redirect(`${saved.redirect_origin}/settings?tab=integrations&integration=${saved.provider}&status=${status}`, 302);
+          Response.redirect(
+            `${saved.redirect_origin}/settings?tab=integrations&integration=${saved.provider}&status=${status}`,
+            302,
+          );
 
-        const log = (level: string, message: string, eventType: string, httpStatus: number | null = null) =>
+        const log = (
+          level: string,
+          message: string,
+          eventType: string,
+          httpStatus: number | null = null,
+        ) =>
           supabaseAdmin.from("integration_events").insert({
             workspace_id: saved.workspace_id,
             provider: saved.provider,
@@ -32,7 +49,11 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
           });
 
         if (providerError || !code) {
-          await log("error", `Provider rejected authorization: ${providerError ?? "no code returned"}`, "oauth_failed");
+          await log(
+            "error",
+            `Provider rejected authorization: ${providerError ?? "no code returned"}`,
+            "oauth_failed",
+          );
           return back("error");
         }
 
@@ -43,8 +64,18 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
           };
           const providers = await import("@/lib/integrations/providers.server");
           const { loadProviderCredentials } = await import("@/lib/integrations/credentials.server");
-          const creds = await loadProviderCredentials(supabaseAdmin, saved.workspace_id, saved.provider);
-          const tokens = await providers.exchangeCode(saved.provider, code, payload.verifier, payload.redirectUri, creds);
+          const creds = await loadProviderCredentials(
+            supabaseAdmin,
+            saved.workspace_id,
+            saved.provider,
+          );
+          const tokens = await providers.exchangeCode(
+            saved.provider,
+            code,
+            payload.verifier,
+            payload.redirectUri,
+            creds,
+          );
 
           let accessToken = tokens.accessToken;
           let expiresIn = tokens.expiresIn;
@@ -57,7 +88,15 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
           }
 
           const config = providers.OAUTH_PROVIDERS[saved.provider];
-          const test = config ? await config.test(accessToken) : { ok: false, status: 0, message: "Unknown integration.", label: null, accountRef: null };
+          const test = config
+            ? await config.test(accessToken)
+            : {
+                ok: false,
+                status: 0,
+                message: "Unknown integration.",
+                label: null,
+                accountRef: null,
+              };
 
           const { error } = await supabaseAdmin.from("integration_connections").upsert(
             {
@@ -69,7 +108,9 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
               account_ref: test.accountRef ?? null,
               scopes: tokens.scopes,
               access_token_ciphertext: await encryptValue(accessToken),
-              refresh_token_ciphertext: tokens.refreshToken ? await encryptValue(tokens.refreshToken) : null,
+              refresh_token_ciphertext: tokens.refreshToken
+                ? await encryptValue(tokens.refreshToken)
+                : null,
               token_expires_at: new Date(Date.now() + expiresIn * 1000).toISOString(),
               connected_by: saved.user_id,
               connected_at: new Date().toISOString(),
@@ -83,13 +124,19 @@ export const Route = createFileRoute("/api/public/integrations/callback")({
 
           await log(
             test.ok ? "info" : "error",
-            test.ok ? "Authorized and verified with a live API call." : `Authorized but verification failed: ${test.message}`,
+            test.ok
+              ? "Authorized and verified with a live API call."
+              : `Authorized but verification failed: ${test.message}`,
             test.ok ? "connected" : "verification_failed",
             test.status || null,
           );
           return back(test.ok ? "connected" : "error");
         } catch (caught) {
-          await log("error", caught instanceof Error ? caught.message : "Authorization failed.", "oauth_failed");
+          await log(
+            "error",
+            caught instanceof Error ? caught.message : "Authorization failed.",
+            "oauth_failed",
+          );
           return back("error");
         }
       },

@@ -6,6 +6,8 @@
 // builder produces the hash used to cache AI analysis, so identical scan data
 // is never paid for twice.
 
+import { record } from "../backend-types";
+
 export interface ContextFinding {
   code: string;
   category: string;
@@ -26,7 +28,13 @@ export interface ScanAiContext {
   business: Record<string, unknown>;
   sources: { source: string; status: string; collectedAt: string | null; error: string | null }[];
   platforms: { provider: string; status: string; relevant: boolean; detail: string }[];
-  measurements: { category: string; key: string; value: string | number | null; unit: string | null; source: string }[];
+  measurements: {
+    category: string;
+    key: string;
+    value: string | number | null;
+    unit: string | null;
+    source: string;
+  }[];
   findings: ContextFinding[];
   crossSource: { code: string; verdict: string; values: Record<string, unknown> }[];
   history: {
@@ -45,7 +53,10 @@ function stableStringify(value: unknown): string {
   if (value && typeof value === "object") {
     return `{${Object.keys(value as Record<string, unknown>)
       .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`)
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`,
+      )
       .join(",")}}`;
   }
   return JSON.stringify(value ?? null);
@@ -65,9 +76,21 @@ export interface BuildContextInput {
   scannedAt: string;
   score: number | null;
   identity: Record<string, unknown>;
-  sources: { source: string; status: string; errorMessage?: string | null; collectedAt?: string | null }[];
+  sources: {
+    source: string;
+    status: string;
+    errorMessage?: string | null;
+    collectedAt?: string | null;
+  }[];
   platforms: { provider: string; status: string; relevant: boolean; detail: string }[];
-  metrics: { category: string; metricKey: string; valueNumeric?: number | null; valueText?: string | null; unit?: string | null; source: string }[];
+  metrics: {
+    category: string;
+    metricKey: string;
+    valueNumeric?: number | null;
+    valueText?: string | null;
+    unit?: string | null;
+    source: string;
+  }[];
   findings: {
     code: string;
     category: string;
@@ -88,22 +111,30 @@ export interface BuildContextInput {
 export function buildAiContext(input: BuildContextInput): ScanAiContext {
   const technical = input.sources.filter((source) => !source.source.startsWith("platform:"));
   const unavailable = [
-    ...technical.filter((source) => source.status !== "completed").map((source) => `${source.source}: ${source.status}`),
-    ...input.platforms.filter((platform) => platform.status !== "connected").map((platform) => `${platform.provider}: ${platform.status}`),
+    ...technical
+      .filter((source) => source.status !== "completed")
+      .map((source) => `${source.source}: ${source.status}`),
+    ...input.platforms
+      .filter((platform) => platform.status !== "connected")
+      .map((platform) => `${platform.provider}: ${platform.status}`),
   ];
 
   const crossSource = input.findings
     .filter((finding) => finding.source === "cross_source")
     .map((finding) => ({
       code: finding.code,
-      verdict: String((finding.evidence as any)?.verdict ?? "UNVERIFIED"),
-      values: ((finding.evidence as any)?.values ?? finding.evidence ?? {}) as Record<string, unknown>,
+      verdict: String(finding.evidence?.["verdict"] ?? "UNVERIFIED"),
+      values: record(finding.evidence?.["values"] ?? finding.evidence),
     }));
 
   return {
     target: { url: input.url, domain: input.domain, scannedAt: input.scannedAt },
     score: input.score,
-    business: Object.fromEntries(Object.entries(input.identity).filter(([, value]) => value !== null && value !== undefined && value !== "")),
+    business: Object.fromEntries(
+      Object.entries(input.identity).filter(
+        ([, value]) => value !== null && value !== undefined && value !== "",
+      ),
+    ),
     sources: technical.map((source) => ({
       source: source.source,
       status: source.status,

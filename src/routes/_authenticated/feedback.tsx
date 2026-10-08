@@ -3,9 +3,23 @@ import { useServerFn } from "@tanstack/react-start";
 import { useMutation } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { ThumbsUp, ThumbsDown, Lightbulb, MessageCircleHeart, Sparkles, RefreshCcw } from "lucide-react";
+import {
+  ThumbsUp,
+  ThumbsDown,
+  Lightbulb,
+  MessageCircleHeart,
+  Sparkles,
+  RefreshCcw,
+} from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
-import { PageHeader, Section, StatCard, Trend, SentimentBar, EmptyState } from "@/components/app/primitives";
+import {
+  PageHeader,
+  Section,
+  StatCard,
+  Trend,
+  SentimentBar,
+  EmptyState,
+} from "@/components/app/primitives";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApp } from "@/lib/app-context";
@@ -24,7 +38,10 @@ export const Route = createFileRoute("/_authenticated/feedback")({
           "Recurring themes, praise, complaints and improvement opportunities extracted from every review and survey response.",
       },
       { property: "og:title", content: "Customer Feedback — Seovale" },
-      { property: "og:description", content: "Turn thousands of comments into a short list of things to fix." },
+      {
+        property: "og:description",
+        content: "Turn thousands of comments into a short list of things to fix.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -64,11 +81,21 @@ function FeedbackPage() {
       />
 
       <div className="stagger mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Comments analysed" value={reviews.length.toLocaleString()} sub="Reviews with tagged themes" icon={MessageCircleHeart} tone="primary" />
+        <StatCard
+          label="Comments analysed"
+          value={reviews.length.toLocaleString()}
+          sub="Reviews with tagged themes"
+          icon={MessageCircleHeart}
+          tone="primary"
+        />
         <StatCard
           label="Top praise"
           value={topPraise ? topPraise.theme : "—"}
-          sub={topPraise ? `${topPraise.mentions} mentions · ${topPraise.sentiment}% positive` : "No data yet"}
+          sub={
+            topPraise
+              ? `${topPraise.mentions} mentions · ${topPraise.sentiment}% positive`
+              : "No data yet"
+          }
           {...(topPraise && topPraise.change !== null ? { trend: topPraise.change } : {})}
           icon={ThumbsUp}
           tone="positive"
@@ -76,12 +103,22 @@ function FeedbackPage() {
         <StatCard
           label="Top complaint"
           value={topComplaint ? topComplaint.theme : "—"}
-          sub={topComplaint ? `${topComplaint.mentions} mentions · ${topComplaint.sentiment}% positive` : "No data yet"}
+          sub={
+            topComplaint
+              ? `${topComplaint.mentions} mentions · ${topComplaint.sentiment}% positive`
+              : "No data yet"
+          }
           {...(topComplaint && topComplaint.change !== null ? { trend: topComplaint.change } : {})}
           icon={ThumbsDown}
           tone="negative"
         />
-        <StatCard label="Opportunities" value={negative.length} sub="High volume, low sentiment themes" icon={Lightbulb} tone="rating" />
+        <StatCard
+          label="Opportunities"
+          value={negative.length}
+          sub="High volume, low sentiment themes"
+          icon={Lightbulb}
+          tone="rating"
+        />
       </div>
 
       <Section
@@ -89,8 +126,14 @@ function FeedbackPage() {
         title="AI insight"
         description={`Live briefing generated from recent reviews in ${location}`}
         action={
-          <Button variant="ghost" size="sm" onClick={() => insightMutation.mutate()} disabled={insightMutation.isPending}>
-            <RefreshCcw className={cn("size-3.5", insightMutation.isPending && "animate-spin")} /> Refresh
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => insightMutation.mutate()}
+            disabled={insightMutation.isPending}
+          >
+            <RefreshCcw className={cn("size-3.5", insightMutation.isPending && "animate-spin")} />{" "}
+            Refresh
           </Button>
         }
       >
@@ -107,7 +150,9 @@ function FeedbackPage() {
             <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-accent text-primary">
               <Sparkles className="size-4" />
             </span>
-            <p className="whitespace-pre-line text-sm text-foreground">{insightMutation.data.insight}</p>
+            <p className="whitespace-pre-line text-sm text-foreground">
+              {insightMutation.data.insight}
+            </p>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">No insight yet.</p>
@@ -115,7 +160,11 @@ function FeedbackPage() {
       </Section>
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Section title="Recurring themes" description="Every theme, ranked by mention volume" bodyClassName="p-0">
+        <Section
+          title="Recurring themes"
+          description="Every theme, ranked by mention volume"
+          bodyClassName="p-0"
+        >
           {isLoading ? (
             <div className="space-y-2 p-5">
               <Skeleton className="h-10 w-full" />
@@ -124,7 +173,11 @@ function FeedbackPage() {
             </div>
           ) : themes.length === 0 ? (
             <div className="p-5">
-              <EmptyState icon={MessageCircleHeart} title="No themes yet" description="Tag your reviews to see recurring themes here." />
+              <EmptyState
+                icon={MessageCircleHeart}
+                title="No themes yet"
+                description="Tag your reviews to see recurring themes here."
+              />
             </div>
           ) : (
             <ul className="divide-y">
@@ -133,15 +186,30 @@ function FeedbackPage() {
                   <div className="flex items-center gap-3">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{t.theme}</span>
-                      <span className="text-xs text-muted-foreground">{t.mentions.toLocaleString()} mentions</span>
+                      <span className="text-xs text-muted-foreground">
+                        {t.mentions.toLocaleString()} mentions
+                      </span>
                     </span>
-                    <span className={cn(
-                      "rounded-full px-2.5 py-0.5 text-[11px] font-bold",
-                      t.sentiment >= 70 ? "bg-positive-soft text-positive" : t.sentiment >= 45 ? "bg-warning-soft text-rating-foreground" : "bg-negative-soft text-negative",
-                    )}>{t.sentiment}% positive</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-[11px] font-bold",
+                        t.sentiment >= 70
+                          ? "bg-positive-soft text-positive"
+                          : t.sentiment >= 45
+                            ? "bg-warning-soft text-rating-foreground"
+                            : "bg-negative-soft text-negative",
+                      )}
+                    >
+                      {t.sentiment}% positive
+                    </span>
                     {t.change === null ? null : <Trend value={t.change} suffix="pts" />}
                   </div>
-                  <SentimentBar className="mt-2 h-1.5" positive={t.sentiment} neutral={Math.round((100 - t.sentiment) * 0.4)} negative={100 - t.sentiment - Math.round((100 - t.sentiment) * 0.4)} />
+                  <SentimentBar
+                    className="mt-2 h-1.5"
+                    positive={t.sentiment}
+                    neutral={Math.round((100 - t.sentiment) * 0.4)}
+                    negative={100 - t.sentiment - Math.round((100 - t.sentiment) * 0.4)}
+                  />
                 </li>
               ))}
             </ul>
@@ -155,10 +223,15 @@ function FeedbackPage() {
             ) : (
               <ul className="space-y-2.5">
                 {positive.map((t) => (
-                  <li key={t.theme} className="flex items-center gap-3 rounded-lg bg-positive-soft/70 px-3 py-2.5">
+                  <li
+                    key={t.theme}
+                    className="flex items-center gap-3 rounded-lg bg-positive-soft/70 px-3 py-2.5"
+                  >
                     <ThumbsUp className="size-4 shrink-0 text-positive" />
                     <span className="flex-1 text-sm font-medium">{t.theme}</span>
-                    <span className="text-xs font-semibold tabular-nums text-muted-foreground">{t.mentions}</span>
+                    <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                      {t.mentions}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -167,13 +240,20 @@ function FeedbackPage() {
 
           <Section title="Improvement opportunities" description="Highest impact fixes, ranked">
             {negative.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No significant negative themes right now.</p>
+              <p className="text-sm text-muted-foreground">
+                No significant negative themes right now.
+              </p>
             ) : (
               <ul className="space-y-2.5">
                 {negative.map((t, i) => (
-                  <li key={t.theme} className="rounded-lg border border-negative/20 bg-negative-soft/60 p-3">
+                  <li
+                    key={t.theme}
+                    className="rounded-lg border border-negative/20 bg-negative-soft/60 p-3"
+                  >
                     <div className="flex items-center gap-2">
-                      <span className="grid size-6 place-items-center rounded-md bg-negative text-[11px] font-bold text-destructive-foreground">{i + 1}</span>
+                      <span className="grid size-6 place-items-center rounded-md bg-negative text-[11px] font-bold text-destructive-foreground">
+                        {i + 1}
+                      </span>
                       <span className="flex-1 text-sm font-semibold">{t.theme}</span>
                       {t.change === null ? null : <Trend value={t.change} suffix="pts" />}
                     </div>

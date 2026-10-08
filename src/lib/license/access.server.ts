@@ -2,13 +2,11 @@
  * Role checks and step-up (MFA) authorization for license administration.
  * Every check runs server-side against the database — never against client input.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DatabaseClient as Db } from "../backend-types";
 import { recordLicenseSecurityEvent } from "./authority.server";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Db = SupabaseClient<any, any, any>;
-
-export type AdminRole = "owner" | "super_admin" | "security_admin" | "tech_lead" | "developer" | "qa" | "support";
+export type AdminRole =
+  "owner" | "super_admin" | "security_admin" | "tech_lead" | "developer" | "qa" | "support";
 
 export const ROLE_LABEL: Record<AdminRole, string> = {
   owner: "Owner",
@@ -41,7 +39,9 @@ const STEP_UP_TTL_MINUTES = 10;
 
 export async function listRoles(db: Db, userId: string): Promise<AdminRole[]> {
   const { data } = await db.from("admin_roles").select("role").eq("user_id", userId);
-  return (data ?? []).map((row: { role: AdminRole }) => row.role);
+  return (data ?? [])
+    .map((row) => row.role)
+    .filter((role): role is AdminRole => Object.hasOwn(ROLE_LABEL, role));
 }
 
 export async function requireRole(db: Db, userId: string, action: SensitiveAction) {

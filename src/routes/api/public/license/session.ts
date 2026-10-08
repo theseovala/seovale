@@ -37,13 +37,15 @@ export const Route = createFileRoute("/api/public/license/session")({
           return Response.json({ ok: false, result: "bad_request" }, { status: 400, headers });
         }
         const body = Body.safeParse(parsed);
-        if (!body.success) return Response.json({ ok: false, result: "bad_request" }, { status: 400, headers });
+        if (!body.success)
+          return Response.json({ ok: false, result: "bad_request" }, { status: 400, headers });
         if (body.data.action === "verify" && !body.data.sessionToken) {
           return Response.json({ ok: false, result: "bad_request" }, { status: 400, headers });
         }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { validateLicense, recordLicenseEvent } = await import("@/lib/license/authority.server");
+        const { validateLicense, recordLicenseEvent } =
+          await import("@/lib/license/authority.server");
         const { decryptSecret, safeEqual } = await import("@/lib/license/crypto.server");
 
         const decision = await validateLicense(supabaseAdmin, {
@@ -57,7 +59,10 @@ export const Route = createFileRoute("/api/public/license/session")({
         });
         if (!decision.ok || !decision.license) {
           const status = decision.result === "rate_limited" ? 429 : 403;
-          return Response.json({ ok: false, result: decision.result, correlationId: decision.correlation }, { status, headers });
+          return Response.json(
+            { ok: false, result: decision.result, correlationId: decision.correlation },
+            { status, headers },
+          );
         }
 
         const { data: license } = await supabaseAdmin
@@ -65,9 +70,14 @@ export const Route = createFileRoute("/api/public/license/session")({
           .select("id, client_id, secret_hash")
           .eq("license_key", decision.license.licenseKey)
           .single();
-        if (!license) return Response.json({ ok: false, result: "license_not_found" }, { status: 403, headers });
+        if (!license)
+          return Response.json(
+            { ok: false, result: "license_not_found" },
+            { status: 403, headers },
+          );
         const secret = await decryptSecret(license.secret_hash);
-        const sign = (payload: string) => createHmac("sha256", secret).update(payload).digest("base64url");
+        const sign = (payload: string) =>
+          createHmac("sha256", secret).update(payload).digest("base64url");
 
         if (body.data.action === "verify") {
           const [payload, sig] = (body.data.sessionToken ?? "").split(".");
@@ -86,12 +96,26 @@ export const Route = createFileRoute("/api/public/license/session")({
             typeof claims.exp === "number" &&
             claims.exp > Date.now();
           if (!valid) {
-            return Response.json({ ok: false, result: "session_invalid", correlationId: decision.correlation }, { status: 401, headers });
+            return Response.json(
+              { ok: false, result: "session_invalid", correlationId: decision.correlation },
+              { status: 401, headers },
+            );
           }
-          return Response.json({ ok: true, result: "valid", expiresAt: new Date(claims.exp!).toISOString(), licenseExpiresAt: decision.license.expiresAt, correlationId: decision.correlation }, { headers });
+          return Response.json(
+            {
+              ok: true,
+              result: "valid",
+              expiresAt: new Date(claims.exp!).toISOString(),
+              licenseExpiresAt: decision.license.expiresAt,
+              correlationId: decision.correlation,
+            },
+            { headers },
+          );
         }
 
-        const licenseExp = decision.license.expiresAt ? new Date(decision.license.expiresAt).getTime() : Infinity;
+        const licenseExp = decision.license.expiresAt
+          ? new Date(decision.license.expiresAt).getTime()
+          : Infinity;
         const exp = Math.min(Date.now() + SESSION_TTL_MS, licenseExp);
         const payload = b64(
           JSON.stringify({
@@ -110,7 +134,10 @@ export const Route = createFileRoute("/api/public/license/session")({
           eventType: "client_session_issued",
           result: "success",
           correlation: decision.correlation,
-          metadata: { domain: decision.license.domain, installation: decision.license.installationRef },
+          metadata: {
+            domain: decision.license.domain,
+            installation: decision.license.installationRef,
+          },
         });
         return Response.json(
           {

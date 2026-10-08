@@ -9,7 +9,7 @@ export type CredentialBag = Record<string, string>;
 
 /** Merged credentials for a provider: vault first, server environment as fallback. */
 export async function loadProviderCredentials(
-  admin: any,
+  admin: import("../backend-types").DatabaseClient,
   workspaceId: string,
   providerId: string,
 ): Promise<CredentialBag> {
@@ -38,7 +38,7 @@ export function maskCredential(value: string) {
 }
 
 export async function saveProviderCredentials(
-  admin: any,
+  admin: import("../backend-types").DatabaseClient,
   workspaceId: string,
   providerId: string,
   userId: string,
@@ -70,7 +70,11 @@ export async function saveProviderCredentials(
   return saved;
 }
 
-export async function deleteProviderCredentials(admin: any, workspaceId: string, providerId: string) {
+export async function deleteProviderCredentials(
+  admin: import("../backend-types").DatabaseClient,
+  workspaceId: string,
+  providerId: string,
+) {
   const { error } = await admin
     .from("integration_provider_credentials")
     .delete()
@@ -80,11 +84,19 @@ export async function deleteProviderCredentials(admin: any, workspaceId: string,
 }
 
 /** Masked, browser-safe view of which credential fields are stored. */
-export async function credentialHints(admin: any, workspaceId: string) {
+export async function credentialHints(
+  admin: import("../backend-types").DatabaseClient,
+  workspaceId: string,
+) {
   const { data, error } = await admin
     .from("integration_provider_credentials")
     .select("provider,field_key,masked_hint,updated_at")
     .eq("workspace_id", workspaceId);
   if (error) throw error;
-  return (data ?? []) as { provider: string; field_key: string; masked_hint: string; updated_at: string }[];
+  return (data ?? []) as {
+    provider: string;
+    field_key: string;
+    masked_hint: string;
+    updated_at: string;
+  }[];
 }

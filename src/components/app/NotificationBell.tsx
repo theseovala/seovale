@@ -46,7 +46,6 @@ export function NotificationBell() {
   // New notifications arrive as a server push, not on a timer.
   useRealtimeInvalidate("notifications-inbox", ["notifications"], [["notifications"]]);
 
-
   const { data, isLoading, isError } = useQuery({
     queryKey: ["notifications"],
     queryFn: () => load(),
@@ -100,7 +99,9 @@ export function NotificationBell() {
           </div>
         </div>
         <div className="max-h-96 overflow-y-auto">
-          {isLoading && <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+          {isLoading && (
+            <p className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</p>
+          )}
           {isError && (
             <p className="px-4 py-6 text-center text-xs text-negative">
               Notifications could not be loaded.
@@ -119,7 +120,12 @@ export function NotificationBell() {
                 !item.readAt && "bg-accent/30",
               )}
             >
-              <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", DOT[item.severity] ?? "bg-info")} />
+              <span
+                className={cn(
+                  "mt-1.5 size-2 shrink-0 rounded-full",
+                  DOT[item.severity] ?? "bg-info",
+                )}
+              />
               <div className="min-w-0 flex-1">
                 {item.entityType === "scan" && item.entityId ? (
                   <Link
@@ -134,7 +140,9 @@ export function NotificationBell() {
                   <p className="truncate text-sm font-semibold">{item.title}</p>
                 )}
                 {item.message && (
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.message}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                    {item.message}
+                  </p>
                 )}
                 <p className="mt-1 text-[11px] text-muted-foreground">{since(item.createdAt)}</p>
               </div>

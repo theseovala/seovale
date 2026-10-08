@@ -18,7 +18,10 @@ export const Route = createFileRoute("/api/public/license/download")({
           request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for"),
         );
         if (!outcome.ok) {
-          return new Response(outcome.message, { status: outcome.status, headers: { "Cache-Control": "no-store" } });
+          return new Response(outcome.message, {
+            status: outcome.status,
+            headers: { "Cache-Control": "no-store" },
+          });
         }
         return new Response(null, {
           status: 302,

@@ -1,7 +1,7 @@
 // Canonical data layer. One source of truth for business facts, evidence and
 // conflicts. Everything written here comes from data a collector actually
 // observed — nothing is invented, and no value is stored without its origin.
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { DatabaseClient as SupabaseClient } from "../backend-types";
 
 export type Confidence = "verified" | "high" | "medium" | "low" | "unverified";
 
@@ -28,7 +28,8 @@ export interface FactChange {
 export function normalizeValue(fieldKey: string, value: string) {
   const trimmed = value.trim().replace(/\s+/g, " ");
   if (fieldKey === "phone") return trimmed.replace(/[^\d+]/g, "");
-  if (fieldKey === "website" || fieldKey === "url") return trimmed.replace(/\/+$/, "").toLowerCase();
+  if (fieldKey === "website" || fieldKey === "url")
+    return trimmed.replace(/\/+$/, "").toLowerCase();
   return trimmed.toLowerCase();
 }
 
@@ -51,7 +52,10 @@ export async function upsertFacts(
     .eq("workspace_id", workspaceId)
     .eq("domain", domain);
   const before = new Map(
-    (existing ?? []).map((row: any) => [`${row.field_key}::${row.source_provider}`, String(row.value_normalized)]),
+    (existing ?? []).map((row) => [
+      `${row.field_key}::${row.source_provider}`,
+      String(row.value_normalized),
+    ]),
   );
 
   const changes: FactChange[] = [];
@@ -60,7 +64,13 @@ export async function upsertFacts(
     const key = `${fact.fieldKey}::${fact.sourceProvider}`;
     const previous = before.get(key) ?? null;
     const changed = previous !== null && previous !== normalized;
-    if (changed) changes.push({ fieldKey: fact.fieldKey, sourceProvider: fact.sourceProvider, previous: previous!, current: normalized });
+    if (changed)
+      changes.push({
+        fieldKey: fact.fieldKey,
+        sourceProvider: fact.sourceProvider,
+        previous: previous!,
+        current: normalized,
+      });
     return {
       workspace_id: workspaceId,
       domain,
@@ -79,7 +89,9 @@ export async function upsertFacts(
     };
   });
 
-  await admin.from("business_facts").upsert(rows, { onConflict: "workspace_id,domain,field_key,source_provider" });
+  await admin
+    .from("business_facts")
+    .upsert(rows, { onConflict: "workspace_id,domain,field_key,source_provider" });
   return changes;
 }
 
@@ -155,7 +167,9 @@ export async function reconcileConflicts(
   }
 
   // Anything previously in conflict for a field that now agrees is resolved.
-  const stillConflicting = new Set(conflicts.map((c) => `${c.fieldKey}::${c.sourceA}::${c.sourceB}`));
+  const stillConflicting = new Set(
+    conflicts.map((c) => `${c.fieldKey}::${c.sourceA}::${c.sourceB}`),
+  );
   const { data: openRows } = await admin
     .from("data_conflicts")
     .select("id,field_key,source_a,source_b")
@@ -163,8 +177,12 @@ export async function reconcileConflicts(
     .eq("domain", domain)
     .eq("status", "open");
   const resolvable = (openRows ?? [])
-    .filter((row: any) => byField.has(row.field_key) && !stillConflicting.has(`${row.field_key}::${row.source_a}::${row.source_b}`))
-    .map((row: any) => row.id);
+    .filter(
+      (row) =>
+        byField.has(row.field_key) &&
+        !stillConflicting.has(`${row.field_key}::${row.source_a}::${row.source_b}`),
+    )
+    .map((row) => row.id);
   if (resolvable.length) {
     await admin
       .from("data_conflicts")
@@ -183,9 +201,14 @@ export async function recordEvidence(
   admin: SupabaseClient,
   workspaceId: string,
   scanId: string,
-  findings: { id: string; code: string; source: string; evidence: Record<string, unknown> | null }[],
+  findings: {
+    id: string;
+    code: string;
+    source: string;
+    evidence: Record<string, unknown> | null;
+  }[],
 ) {
-  const rows: Record<string, unknown>[] = [];
+  const rows: import("@/integrations/supabase/types").TablesInsert<"finding_evidence">[] = [];
   const observedAt = new Date().toISOString();
   for (const finding of findings) {
     const evidence = finding.evidence ?? {};
@@ -238,7 +261,10 @@ export async function ensureBusiness(
     observedAt: string;
   },
 ): Promise<BusinessLink | null> {
-  const normalized = args.domain.trim().toLowerCase().replace(/^www\./, "");
+  const normalized = args.domain
+    .trim()
+    .toLowerCase()
+    .replace(/^www\./, "");
   if (!normalized) return null;
 
   const { data: existingDomain } = await admin
@@ -250,7 +276,7 @@ export async function ensureBusiness(
 
   let businessId = (existingDomain?.business_id as string | undefined) ?? null;
 
-  const businessPatch: Record<string, unknown> = {
+  const businessPatch: import("@/integrations/supabase/types").TablesUpdate<"businesses"> = {
     website: args.url,
     last_checked_at: args.observedAt,
     source_provider: "website",

@@ -3,6 +3,7 @@
 // provider event id and queues processing. No event is ever faked.
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "crypto";
+import { jsonValue, record, records, stringValue } from "@/lib/backend-types";
 
 /**
  * Headers that must never be written to the event record. Provider signatures
@@ -120,9 +121,12 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         }
 
         // ---- Parse and resolve the workspace from the event payload ----
-        let payload: Record<string, any>;
+        let payload: Record<string, unknown>;
         try {
-          payload = JSON.parse(raw);
+          const parsed: unknown = JSON.parse(raw);
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+            return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+          payload = record(parsed);
         } catch {
           return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
         }
@@ -132,17 +136,17 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
         let providerEventId: string | null = null;
         let eventType = "unknown";
         if (provider === "meta") {
-          const entry = (payload["entry"] ?? [])[0];
+          const entry = records(payload["entry"])[0];
           providerEventId = entry ? String(entry["id"]) : null;
           eventType = String(payload["object"] ?? "unknown");
           if (entry) {
-            const change = (entry["changes"] ?? [])[0];
-            const resourceRef = change?.["value"]?.["metadata"] ?? null;
+            const change = records(entry["changes"])[0];
+            const resourceRef = record(change?.["value"])["metadata"] ?? null;
             // Resolve by the connected account (page/IG id) stored at connect time.
             const { data: conn } = await supabaseAdmin
               .from("integration_connections")
               .select("workspace_id")
-              .eq("provider", entry["id"]?.toString().startsWith("17") ? "instagram" : "facebook")
+              .eq("provider", String(entry["id"] ?? "").startsWith("17") ? "instagram" : "facebook")
               .eq("account_ref", String(entry["id"]))
               .maybeSingle();
             workspaceId = conn?.workspace_id ?? null;
@@ -161,7 +165,7 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
             .maybeSingle();
           workspaceId = conn?.workspace_id ?? null;
         } else {
-          providerEventId = payload["eventId"] ?? null;
+          providerEventId = stringValue(payload["eventId"]);
           eventType = String(payload["eventType"] ?? "unknown");
         }
 
@@ -174,7 +178,7 @@ export const Route = createFileRoute("/api/public/integrations/webhook")({
             provider_event_id: providerEventId,
             event_type: eventType,
             signature_valid: true,
-            payload,
+            payload: jsonValue(payload),
             headers: auditableHeaders(request.headers),
             status: "received",
           })

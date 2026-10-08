@@ -107,7 +107,11 @@ export async function checkCircuit(
   return { allowed: true, state: "half_open", reason: null, cooldownUntil };
 }
 
-export async function recordCircuitSuccess(admin: SupabaseClient, workspaceId: string, provider: string) {
+export async function recordCircuitSuccess(
+  admin: SupabaseClient,
+  workspaceId: string,
+  provider: string,
+) {
   await admin.from("provider_circuits").upsert(
     {
       workspace_id: workspaceId,
@@ -146,7 +150,9 @@ export async function recordCircuitFailure(
       failure_count: failures,
       last_failure_at: new Date().toISOString(),
       opened_at: open ? new Date().toISOString() : null,
-      cooldown_until: open ? new Date(Date.now() + CIRCUIT_COOLDOWN_MINUTES * 60_000).toISOString() : null,
+      cooldown_until: open
+        ? new Date(Date.now() + CIRCUIT_COOLDOWN_MINUTES * 60_000).toISOString()
+        : null,
       last_error: message.slice(0, 500),
     },
     { onConflict: "workspace_id,provider" },
@@ -188,7 +194,11 @@ export async function recoverStalled(admin: SupabaseClient, workspaceId: string)
       .eq("id", scan.id);
     await admin
       .from("scan_stages")
-      .update({ status: "failed", detail: "Stalled and stopped safely.", completed_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        detail: "Stalled and stopped safely.",
+        completed_at: new Date().toISOString(),
+      })
       .eq("scan_id", scan.id)
       .eq("status", "running");
     recovered.scans += 1;

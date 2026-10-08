@@ -2,8 +2,8 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Star, TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BRAND, platforms, type PlatformId, type Sentiment, type ReviewStatus } from "@/lib/domain";
-import darkCoinAsset from "@/assets/seovale-coin-dark.jpg.asset.json";
-import lightCoinAsset from "@/assets/seovale-coin-light.jpg.asset.json";
+import darkCoinAsset from "@/assets/seovale-coin-dark.jpg";
+import lightCoinAsset from "@/assets/seovale-coin-light.jpg";
 import { Button } from "@/components/ui/button";
 
 /* ---------- Page header ---------- */
@@ -26,7 +26,9 @@ export function PageHeader({
             {eyebrow}
           </p>
         )}
-        <h1 className="font-display text-[22px] font-bold tracking-tight text-foreground md:text-[28px]">{title}</h1>
+        <h1 className="font-display text-[22px] font-bold tracking-tight text-foreground md:text-[28px]">
+          {title}
+        </h1>
         {description && (
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
         )}
@@ -37,16 +39,35 @@ export function PageHeader({
 }
 
 /* ---------- Stars ---------- */
-export function Stars({ value, size = 14, className }: { value: number; size?: number; className?: string }) {
+export function Stars({
+  value,
+  size = 14,
+  className,
+}: {
+  value: number;
+  size?: number;
+  className?: string;
+}) {
   return (
-    <span className={cn("inline-flex items-center gap-0.5", className)} aria-label={`${value} out of 5 stars`}>
+    <span
+      className={cn("inline-flex items-center gap-0.5", className)}
+      aria-label={`${value} out of 5 stars`}
+    >
       {[1, 2, 3, 4, 5].map((i) => {
         const fill = Math.max(0, Math.min(1, value - (i - 1)));
         return (
           <span key={i} className="relative inline-block" style={{ width: size, height: size }}>
-            <Star className="absolute inset-0 text-border" style={{ width: size, height: size }} strokeWidth={1.5} />
+            <Star
+              className="absolute inset-0 text-border"
+              style={{ width: size, height: size }}
+              strokeWidth={1.5}
+            />
             <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-              <Star className="fill-rating text-rating" style={{ width: size, height: size }} strokeWidth={1.5} />
+              <Star
+                className="fill-rating text-rating"
+                style={{ width: size, height: size }}
+                strokeWidth={1.5}
+              />
             </span>
           </span>
         );
@@ -56,7 +77,15 @@ export function Stars({ value, size = 14, className }: { value: number; size?: n
 }
 
 /* ---------- Trend ---------- */
-export function Trend({ value, suffix = "%", className }: { value: number; suffix?: string; className?: string }) {
+export function Trend({
+  value,
+  suffix = "%",
+  className,
+}: {
+  value: number;
+  suffix?: string;
+  className?: string;
+}) {
   const Icon = value > 0 ? TrendingUp : value < 0 ? TrendingDown : Minus;
   const tone = value > 0 ? "text-positive" : value < 0 ? "text-negative" : "text-muted-foreground";
   return (
@@ -99,13 +128,17 @@ export function StatCard({
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
         {Icon && (
-          <span className={cn("icon-tile grid size-8 shrink-0 place-items-center rounded-lg", iconTone)}>
+          <span
+            className={cn("icon-tile grid size-8 shrink-0 place-items-center rounded-lg", iconTone)}
+          >
             <Icon className="size-4" />
           </span>
         )}
       </div>
       <div className="mt-2 flex items-end gap-2.5">
-        <span className="num font-display text-[28px] font-bold leading-none tracking-tight text-foreground">{value}</span>
+        <span className="num font-display text-[28px] font-bold leading-none tracking-tight text-foreground">
+          {value}
+        </span>
         {trend !== undefined && <Trend value={trend} className="mb-0.5" />}
       </div>
       {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
@@ -115,14 +148,39 @@ export function StatCard({
 }
 
 /* ---------- Score ring ---------- */
-export function ScoreRing({ score, size = 132, stroke = 10, label = "Reputation score" }: { score: number; size?: number; stroke?: number; label?: string }) {
+export function ScoreRing({
+  score,
+  size = 132,
+  stroke = 10,
+  label = "Reputation score",
+}: {
+  score: number;
+  size?: number;
+  stroke?: number;
+  label?: string;
+}) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const tone = score >= 85 ? "var(--positive)" : score >= 70 ? "var(--primary-glow)" : score >= 55 ? "var(--warning)" : "var(--negative)";
+  const tone =
+    score >= 85
+      ? "var(--positive)"
+      : score >= 70
+        ? "var(--primary-glow)"
+        : score >= 55
+          ? "var(--warning)"
+          : "var(--negative)";
   return (
     <div className="relative grid place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" strokeOpacity={0.15} strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.15}
+          strokeWidth={stroke}
+        />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -137,21 +195,37 @@ export function ScoreRing({ score, size = 132, stroke = 10, label = "Reputation 
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="num font-display text-3xl font-bold leading-none text-current">{score}</span>
-        <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-current opacity-70">{label}</span>
+        <span className="num font-display text-3xl font-bold leading-none text-current">
+          {score}
+        </span>
+        <span className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-current opacity-70">
+          {label}
+        </span>
       </div>
     </div>
   );
 }
 
 /* ---------- Platform icon ---------- */
-export function PlatformIcon({ id, size = "md", className }: { id: PlatformId; size?: "sm" | "md" | "lg"; className?: string }) {
+export function PlatformIcon({
+  id,
+  size = "md",
+  className,
+}: {
+  id: PlatformId;
+  size?: "sm" | "md" | "lg";
+  className?: string;
+}) {
   const p = platforms[id];
   const s = { sm: "size-5 text-[9px]", md: "size-7 text-[11px]", lg: "size-10 text-sm" }[size];
   return (
     <span
       title={p.name}
-      className={cn("grid shrink-0 place-items-center rounded-md font-display font-bold text-white", s, className)}
+      className={cn(
+        "grid shrink-0 place-items-center rounded-md font-display font-bold text-white",
+        s,
+        className,
+      )}
       style={{ background: p.color }}
     >
       {p.short}
@@ -174,7 +248,17 @@ export function SentimentDot({ s, withLabel = false }: { s: Sentiment; withLabel
   );
 }
 
-export function SentimentBar({ positive, neutral, negative, className }: { positive: number; neutral: number; negative: number; className?: string }) {
+export function SentimentBar({
+  positive,
+  neutral,
+  negative,
+  className,
+}: {
+  positive: number;
+  neutral: number;
+  negative: number;
+  className?: string;
+}) {
   return (
     <div className={cn("flex h-2.5 w-full overflow-hidden rounded-full bg-muted", className)}>
       <div className="bg-positive transition-all duration-700" style={{ width: `${positive}%` }} />
@@ -201,7 +285,13 @@ const statusStyles: Record<string, string> = {
   disconnected: "bg-neutral-soft text-muted-foreground",
 };
 
-export function StatusBadge({ status, className }: { status: ReviewStatus | string; className?: string }) {
+export function StatusBadge({
+  status,
+  className,
+}: {
+  status: ReviewStatus | string;
+  className?: string;
+}) {
   return (
     <span
       className={cn(
@@ -248,7 +338,17 @@ export function Section({
 }
 
 /* ---------- Empty state ---------- */
-export function EmptyState({ icon: Icon, title, description, action }: { icon: LucideIcon; title: string; description: string; action?: ReactNode }) {
+export function EmptyState({
+  icon: Icon,
+  title,
+  description,
+  action,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-10 text-center">
       <span className="grid size-12 place-items-center rounded-2xl bg-accent text-primary">
@@ -262,14 +362,23 @@ export function EmptyState({ icon: Icon, title, description, action }: { icon: L
 }
 
 /* ---------- Interactive brand coin ---------- */
-export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" | "lg"; light?: boolean }) {
+export function BrandMark({
+  size = "md",
+  light = false,
+}: {
+  size?: "sm" | "md" | "lg";
+  light?: boolean;
+}) {
   const spinTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spinning = useRef(false);
   const sizeClass = { sm: "brand-coin-sm", md: "brand-coin-md", lg: "brand-coin-lg" }[size];
 
-  useEffect(() => () => {
-    if (spinTimer.current) clearTimeout(spinTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (spinTimer.current) clearTimeout(spinTimer.current);
+    },
+    [],
+  );
 
   function spin(event: React.MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
@@ -307,7 +416,7 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
         <span className="brand-coin-edge" />
         <img
           className="brand-coin-face brand-coin-front"
-          src={darkCoinAsset.url}
+          src={darkCoinAsset}
           alt=""
           width={700}
           height={700}
@@ -315,7 +424,7 @@ export function BrandMark({ size = "md", light = false }: { size?: "sm" | "md" |
         />
         <img
           className="brand-coin-face brand-coin-back"
-          src={lightCoinAsset.url}
+          src={lightCoinAsset}
           alt=""
           width={700}
           height={700}
