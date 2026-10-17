@@ -23,11 +23,11 @@ export function verifySessionToken(token: string, secret: string, binding: Bindi
     const claims: unknown = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (!claims || typeof claims !== "object" || Array.isArray(claims)) return null;
     const c = claims as Record<string, unknown>;
-    if (c.lic !== binding.licenseKey || c.dom !== binding.domain || c.ins !== binding.installationRef) return null;
-    if (binding.subject !== undefined && c.sub !== binding.subject) return null;
-    if (typeof c.exp !== "number" || !Number.isFinite(c.exp) || c.exp <= now) return null;
-    if (typeof c.iat !== "number" || !Number.isFinite(c.iat) || c.iat > now || c.exp <= c.iat || c.exp - c.iat > SESSION_TTL_MS) return null;
-    return { expiresAt: new Date(c.exp).toISOString(), subject: typeof c.sub === "string" ? c.sub : null };
+    if (c["lic"] !== binding.licenseKey || c["dom"] !== binding.domain || c["ins"] !== binding.installationRef) return null;
+    if (binding.subject !== undefined && c["sub"] !== binding.subject) return null;
+    if (typeof c["exp"] !== "number" || !Number.isFinite(c["exp"]) || c["exp"] <= now) return null;
+    if (typeof c["iat"] !== "number" || !Number.isFinite(c["iat"]) || c["iat"] > now || c["exp"] <= c["iat"] || c["exp"] - c["iat"] > SESSION_TTL_MS) return null;
+    return { expiresAt: new Date(c["exp"]).toISOString(), subject: typeof c["sub"] === "string" ? c["sub"] : null };
   } catch {
     return null;
   }
