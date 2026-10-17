@@ -185,6 +185,9 @@
 - [x] Single super-admin login: theseovala@gmail.com (reset password), remove other auth users
 
 ## License server + live client validation (requested 2026-10-06)
+- [ ] Admin license overview: list, expiry, bound domains, installations, and client-pass audit
+- [ ] Issue a license for the client's confirmed domain and verify login/session checks end-to-end (blocked until client domain/site are supplied)
+- [ ] Email the license and binding instructions to the confirmed client recipient (blocked until recipient and sender setup are supplied)
 - [ ] Verify admin create, activate, suspend, and renew against real persisted license state
 - [ ] Link the issued license to its authorized client domain
 - [ ] Generate and verify a short-lived single-use download token
