@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Client-license pass cryptography lives in `src/lib/license/session.server.ts`; HTTP handlers revalidate authoritative license state on every check and use the shared helper to keep binding and expiry rules testable.
+- Admin release uploads use the existing private release bucket with immutable ZIP paths and server-derived manifests; ZIP entries are inspected server-side to avoid trusting a browser-supplied file list.

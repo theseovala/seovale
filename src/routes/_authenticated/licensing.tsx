@@ -23,6 +23,7 @@ import {
   resetInstallation,
   requestDownload,
   publishRelease,
+  uploadReleaseArtifact,
   rollbackRelease,
   listAdminUsers,
   setAdminRole,
@@ -72,6 +73,7 @@ function LicensingPage() {
   const [issued, setIssued] = useState<{ licenseKey: string; licenseSecret: string; domain: string } | null>(null);
   const [domainEdit, setDomainEdit] = useState<Record<string, string>>({});
   const [releaseForm, setReleaseForm] = useState({ version: "", buildId: "", artifactPath: "" });
+  const [releaseFile, setReleaseFile] = useState<File | null>(null);
   const [roleForm, setRoleForm] = useState({ email: "", role: "developer" });
 
   const refresh = () => {
@@ -83,7 +85,7 @@ function LicensingPage() {
   const handleError = (error: Error, retry: () => void) => {
     const match = /^STEP_UP_REQUIRED:(.+)$/.exec(error.message);
     if (match) {
-      setPendingAction({ action: match[1]!, run: retry });
+      setPendingAction({ action: match[1] ?? "", run: retry });
       return;
     }
     toast.error(error.message);
@@ -112,7 +114,10 @@ function LicensingPage() {
   };
 
   const stepUp = useMutation({
-    mutationFn: () => verifyStepUp({ data: { action: pendingAction!.action, code: stepUpCode } }),
+    mutationFn: () => {
+      if (!pendingAction) throw new Error("No action awaiting confirmation.");
+      return verifyStepUp({ data: { action: pendingAction.action, code: stepUpCode } });
+    },
     onSuccess: () => {
       const retry = pendingAction?.run;
       setStepUpCode("");
@@ -425,7 +430,7 @@ function LicensingPage() {
                         size="sm"
                         variant="outline"
                         disabled={(domainEdit[license.id] ?? "").length < 3}
-                        onClick={() => run(() => changeLicenseDomain({ data: { licenseId: license.id, domain: domainEdit[license.id]! } }), "Domain changed.")}
+                        onClick={() => run(() => changeLicenseDomain({ data: { licenseId: license.id, domain: domainEdit[license.id] ?? "" } }), "Domain changed.")}
                       >
                         Change domain
                       </Button>
@@ -439,6 +444,21 @@ function LicensingPage() {
 
         {/* ---------- releases ---------- */}
         <Section title="Releases" description="Only signed packages that passed artifact inspection can be downloaded.">
+          {data?.isStaff && (
+            <div className="mb-4 flex flex-wrap items-end gap-3">
+              <div className="min-w-0 flex-1">
+                <Label htmlFor="release-zip">Client release ZIP</Label>
+                <Input id="release-zip" type="file" accept=".zip" onChange={(event) => setReleaseFile(event.target.files?.[0] ?? null)} />
+              </div>
+              <Button variant="outline" disabled={!releaseFile || busy} onClick={() => run(async () => {
+                if (!releaseFile) throw new Error("Select a release ZIP.");
+                const form = new FormData();
+                form.set("artifact", releaseFile);
+                const result = await uploadReleaseArtifact({ data: form });
+                setReleaseForm((current) => ({ ...current, artifactPath: result.artifactPath }));
+              }, "Release uploaded and inspected.")}>Upload release</Button>
+            </div>
+          )}
           {data?.isStaff && (
             <div className="mb-4 grid gap-2 md:grid-cols-4">
               <Input
@@ -461,7 +481,10 @@ function LicensingPage() {
                 disabled={!releaseForm.version || !releaseForm.buildId || !releaseForm.artifactPath}
                 onClick={() =>
                   run(
-                    () => publishRelease({ data: { ...releaseForm } }),
+                    async () => {
+                      const result = await publishRelease({ data: { ...releaseForm } });
+                      if (result.release.status !== "published") throw new Error("Release blocked by inspection; not published.");
+                    },
                     "Release inspected, signed and published.",
                   )
                 }
@@ -522,6 +545,23 @@ function LicensingPage() {
         </Section>
 
         {/* ---------- events ---------- */}
+        <Section title="Client pass audit">
+          {!data?.events.some((event: any) => event.event_type.startsWith("client_session_")) ? (
+            <EmptyState icon={ShieldCheck} title="No client pass checks recorded" description="No verified client-session activity is available." />
+          ) : (
+            <div className="space-y-1 text-sm">
+              {data.events.filter((event: any) => event.event_type.startsWith("client_session_")).map((event: any) => (
+                <div key={event.id} className="flex flex-wrap justify-between gap-2 rounded border border-border/50 px-3 py-2">
+                  <span>{event.event_type.replace(/_/g, " ")}</span>
+                  <span>{data.licenses.find((license: any) => license.id === event.license_id)?.license_key ?? "—"}</span>
+                  <span className="break-all text-muted-foreground">{event.metadata?.domain ?? "—"} · {event.metadata?.installation ?? "—"}</span>
+                  <Badge variant="outline">{event.result}</Badge>
+                  <span className="text-muted-foreground">{when(event.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
         <Section title="Licence audit history" description="Who did what, when — no secrets are ever stored in these records.">
           {!data?.events.length ? (
             <EmptyState icon={KeyRound} title="No events yet" description="Licence activity will appear here." />

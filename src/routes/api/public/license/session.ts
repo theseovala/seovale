@@ -6,10 +6,7 @@
 // short-lived (max 15 min, never past license expiry) and HMAC-signed with the
 // license secret, so the deployment can verify them locally without the server.
 import { createFileRoute } from "@tanstack/react-router";
-import { createHmac } from "node:crypto";
 import { z } from "zod";
-
-const SESSION_TTL_MS = 15 * 60 * 1000;
 
 const Body = z.object({
   action: z.enum(["issue", "verify"]),
@@ -41,10 +38,14 @@ export const Route = createFileRoute("/api/public/license/session")({
         if (body.data.action === "verify" && !body.data.sessionToken) {
           return Response.json({ ok: false, result: "bad_request" }, { status: 400, headers });
         }
+        if (!request.headers.get("x-license-signature") || !request.headers.get("x-license-timestamp")) {
+          return Response.json({ ok: false, result: "signature_required" }, { status: 403, headers });
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { validateLicense, recordLicenseEvent } = await import("@/lib/license/authority.server");
-        const { decryptSecret, safeEqual } = await import("@/lib/license/crypto.server");
+        const { decryptSecret } = await import("@/lib/license/crypto.server");
+        const { sessionExpiry, signSessionPayload, verifySessionToken } = await import("@/lib/license/session.server");
 
         const decision = await validateLicense(supabaseAdmin, {
           licenseKey: body.data.licenseKey,
@@ -67,32 +68,27 @@ export const Route = createFileRoute("/api/public/license/session")({
           .single();
         if (!license) return Response.json({ ok: false, result: "license_not_found" }, { status: 403, headers });
         const secret = await decryptSecret(license.secret_hash);
-        const sign = (payload: string) => createHmac("sha256", secret).update(payload).digest("base64url");
+        const audit = async (eventType: string, result: string) => recordLicenseEvent(supabaseAdmin, {
+          licenseId: license.id, clientId: license.client_id, eventType, result,
+          correlation: decision.correlation,
+          metadata: { domain: decision.license?.domain, installation: decision.license?.installationRef },
+        });
 
         if (body.data.action === "verify") {
-          const [payload, sig] = (body.data.sessionToken ?? "").split(".");
-          let claims: { lic?: string; dom?: string; ins?: string; exp?: number } = {};
-          try {
-            claims = JSON.parse(Buffer.from(payload ?? "", "base64url").toString());
-          } catch {
-            /* falls through to rejection */
-          }
-          const valid =
-            Boolean(payload && sig) &&
-            safeEqual(sign(payload!), sig!) &&
-            claims.lic === decision.license.licenseKey &&
-            claims.dom === decision.license.domain &&
-            claims.ins === decision.license.installationRef &&
-            typeof claims.exp === "number" &&
-            claims.exp > Date.now();
-          if (!valid) {
+          const verified = verifySessionToken(body.data.sessionToken ?? "", secret, {
+            licenseKey: decision.license.licenseKey, domain: decision.license.domain,
+            installationRef: decision.license.installationRef, subject: body.data.subject,
+          }, Date.now());
+          if (!verified) {
+            await audit("client_session_rejected", "denied");
             return Response.json({ ok: false, result: "session_invalid", correlationId: decision.correlation }, { status: 401, headers });
           }
-          return Response.json({ ok: true, result: "valid", expiresAt: new Date(claims.exp!).toISOString(), licenseExpiresAt: decision.license.expiresAt, correlationId: decision.correlation }, { headers });
+          await audit("client_session_verified", "success");
+          return Response.json({ ok: true, result: "valid", expiresAt: verified.expiresAt, features: decision.license.features, licenseExpiresAt: decision.license.expiresAt, correlationId: decision.correlation }, { headers });
         }
 
-        const licenseExp = decision.license.expiresAt ? new Date(decision.license.expiresAt).getTime() : Infinity;
-        const exp = Math.min(Date.now() + SESSION_TTL_MS, licenseExp);
+        const now = Date.now();
+        const exp = sessionExpiry(now, decision.license.expiresAt);
         const payload = b64(
           JSON.stringify({
             lic: decision.license.licenseKey,
@@ -100,7 +96,7 @@ export const Route = createFileRoute("/api/public/license/session")({
             ins: decision.license.installationRef,
             sub: body.data.subject ?? null,
             features: decision.license.features,
-            iat: Date.now(),
+            iat: now,
             exp,
           }),
         );
@@ -115,7 +111,7 @@ export const Route = createFileRoute("/api/public/license/session")({
         return Response.json(
           {
             ok: true,
-            sessionToken: `${payload}.${sign(payload)}`,
+            sessionToken: `${payload}.${signSessionPayload(payload, secret)}`,
             expiresAt: new Date(exp).toISOString(),
             licenseExpiresAt: decision.license.expiresAt,
             features: decision.license.features,

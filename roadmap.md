@@ -185,8 +185,10 @@
 - [x] Single super-admin login: theseovala@gmail.com (reset password), remove other auth users
 
 ## License server + live client validation (requested 2026-10-06)
+- [x] Check provider credentials/approval and run configured tests: PageSpeed HTTP 403 (API disabled), Safe Browsing HTTP 403 (blocked); Indeed/Glassdoor/Meta Business local approval gates confirmed, not live API tests (2026-10-18)
+- [ ] Successful provider API tests (blocked by Google API enablement/restrictions and Indeed/Glassdoor partner access / Meta App Review)
 - [ ] Upload an approved release, download through a real client token, and confirm its audit record (blocked until approved artifact/manifest and client access are supplied)
-- [ ] Admin license overview: list, expiry, bound domains, installations, and client-pass audit
+- [x] Admin license overview: existing list/expiry/domains/installations preserved; client-pass audit and upload controls added; signed-in screen verified, no session activity invented
 - [ ] Issue a license for the client's confirmed domain and verify login/session checks end-to-end (blocked until client domain/site are supplied)
 - [ ] Email the license and binding instructions to the confirmed client recipient (blocked until recipient and sender setup are supplied)
 - [ ] Verify admin create, activate, suspend, and renew against real persisted license state

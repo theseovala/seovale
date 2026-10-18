@@ -60,7 +60,9 @@ export const getLicenseOverview = createServerFn({ method: "POST" })
       roles.some((r) => ["owner", "super_admin", "security_admin"].includes(r))
         ? db.from("license_security_events").select("*").order("created_at", { ascending: false }).limit(100)
         : Promise.resolve({ data: [] }),
-      licenseIds.length
+      isStaff
+        ? db.from("license_events").select("*").order("created_at", { ascending: false }).limit(100)
+        : licenseIds.length
         ? db.from("license_events").select("*").in("license_id", licenseIds).order("created_at", { ascending: false }).limit(100)
         : Promise.resolve({ data: [] }),
       licenseIds.length
@@ -91,6 +93,37 @@ export const getLicenseOverview = createServerFn({ method: "POST" })
   });
 
 /* ---------------- MFA ---------------- */
+
+export const uploadReleaseArtifact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: FormData) => {
+    if (!(input instanceof FormData)) throw new Error("Upload a release ZIP.");
+    return input;
+  })
+  .handler(async ({ data, context }) => {
+    const ctx = context as Ctx;
+    const access = await import("@/lib/license/access.server");
+    await access.requireRole(ctx.supabase, ctx.userId, "publish_release");
+    const db = await admin();
+    await access.requireStepUp(db, ctx.userId, "publish_release");
+    const file = data.get("artifact");
+    if (!(file instanceof File) || !file.name.toLowerCase().endsWith(".zip")) throw new Error("Select a release ZIP.");
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { inspectReleaseZip } = await import("@/lib/license/archive.server");
+    const { RELEASE_BUCKET } = await import("@/lib/license/operations.server");
+    const { entries, inspection } = inspectReleaseZip(bytes);
+    const artifactPath = `uploads/${crypto.randomUUID()}/release.zip`;
+    const { error } = await db.storage.from(RELEASE_BUCKET).upload(artifactPath, bytes, { contentType: "application/zip", upsert: false });
+    if (error) throw new Error("Release upload failed.");
+    const { error: manifestError } = await db.storage.from(RELEASE_BUCKET).upload(`${artifactPath}.manifest.json`, JSON.stringify({ entries }), { contentType: "application/json", upsert: false });
+    if (manifestError) {
+      await db.storage.from(RELEASE_BUCKET).remove([artifactPath]);
+      throw new Error("Release manifest upload failed.");
+    }
+    const { recordLicenseEvent } = await import("@/lib/license/authority.server");
+    await recordLicenseEvent(db, { actor: ctx.userId, eventType: "release_uploaded", resource: artifactPath, metadata: { bytes: bytes.byteLength, inspectedEntries: inspection.inspectedEntries } });
+    return { artifactPath, inspectedEntries: inspection.inspectedEntries };
+  });
 
 export const getMfaStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -634,6 +667,12 @@ export const publishRelease = createServerFn({ method: "POST" })
     if (!manifestFile) throw new Error("No manifest was uploaded next to this artifact — inspection cannot run.");
     const manifest = JSON.parse(await manifestFile.text()) as { entries?: string[] };
     const inspection = operations.inspectArtifactEntries(manifest.entries ?? []);
+    if (data.artifactPath.endsWith(".zip")) {
+      const { inspectReleaseZip } = await import("@/lib/license/archive.server");
+      const actual = inspectReleaseZip(bytes);
+      if (JSON.stringify(actual.entries.slice().sort()) !== JSON.stringify((manifest.entries ?? []).slice().sort())) throw new Error("Archive entries do not match the manifest.");
+    }
+    if (!inspection.inspectedEntries) throw new Error("Release manifest is empty.");
 
     const releaseRef = crypto.generateReleaseRef();
     const signature = operations.releaseSignature({
