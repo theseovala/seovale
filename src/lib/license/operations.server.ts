@@ -246,6 +246,9 @@ export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string 
   if (!license || license.status !== "active") {
     return deny(403, "License is not active.", "download_license_not_active", tokenRow.license_id, tokenRow.id);
   }
+  if (license.expires_at && Date.parse(license.expires_at) <= Date.now()) {
+    return deny(403, "License has expired.", "download_license_expired", tokenRow.license_id, tokenRow.id);
+  }
 
   const { data: release } = await db
     .from("license_releases")
@@ -258,11 +261,19 @@ export async function redeemDownloadToken(db: Db, rawToken: string, ip?: string 
   if (!verifyRelease(release)) {
     return deny(409, "Release signature check failed.", "release_signature_invalid", tokenRow.license_id, tokenRow.id);
   }
+  const { data: artifact, error: artifactError } = await db.storage.from(RELEASE_BUCKET).download(release.artifact_path);
+  if (artifactError || !artifact) return deny(500, "Release artifact is unavailable.", "download_storage_error", tokenRow.license_id, tokenRow.id);
+  if (sha256Hex(Buffer.from(await artifact.arrayBuffer()).toString("base64")) !== release.checksum_sha256) {
+    return deny(409, "Release artifact integrity check failed.", "release_artifact_tampered", tokenRow.license_id, tokenRow.id);
+  }
 
   const { data: signed, error } = await db.storage.from(RELEASE_BUCKET).createSignedUrl(release.artifact_path, 120, { download: true });
   if (error || !signed) return deny(500, "Could not prepare the download.", "download_storage_error", tokenRow.license_id, tokenRow.id);
 
-  await db.from("license_download_tokens").update({ used_at: new Date().toISOString() }).eq("id", tokenRow.id);
+  const { data: consumed, error: consumeError } = await db.from("license_download_tokens")
+    .update({ used_at: new Date().toISOString() }).eq("id", tokenRow.id)
+    .is("used_at", null).is("revoked_at", null).gt("expires_at", new Date().toISOString()).select("id").maybeSingle();
+  if (consumeError || !consumed) return deny(403, "Download link has already been used or expired.", "download_token_replayed", tokenRow.license_id, tokenRow.id);
   await db.from("licenses").update({ last_download_at: new Date().toISOString() }).eq("id", license.id);
   await db.from("license_download_events").insert({
     license_id: license.id,
