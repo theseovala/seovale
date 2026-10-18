@@ -185,6 +185,7 @@
 - [x] Single super-admin login: theseovala@gmail.com (reset password), remove other auth users
 
 ## License server + live client validation (requested 2026-10-06)
+- [ ] Check Indeed, Glassdoor, Meta Business, PageSpeed and Safe Browsing credentials/approval and run real configured-provider tests (requested 2026-10-18)
 - [ ] Upload an approved release, download through a real client token, and confirm its audit record (blocked until approved artifact/manifest and client access are supplied)
 - [ ] Admin license overview: list, expiry, bound domains, installations, and client-pass audit
 - [ ] Issue a license for the client's confirmed domain and verify login/session checks end-to-end (blocked until client domain/site are supplied)
