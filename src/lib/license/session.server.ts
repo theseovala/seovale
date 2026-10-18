@@ -3,7 +3,7 @@ import { safeEqual } from "./crypto.server";
 
 export const SESSION_TTL_MS = 15 * 60 * 1000;
 
-type Binding = { licenseKey: string; domain: string; installationRef: string | null; subject?: string };
+type Binding = { licenseKey: string; domain: string; installationRef: string | null; subject?: string | undefined };
 
 export function sessionExpiry(now: number, licenseExpiresAt: string | null) {
   const limit = licenseExpiresAt === null ? Infinity : Date.parse(licenseExpiresAt);
