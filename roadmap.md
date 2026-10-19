@@ -185,6 +185,9 @@
 - [x] Single super-admin login: theseovala@gmail.com (reset password), remove other auth users
 
 ## License server + live client validation (requested 2026-10-06)
+- [ ] Show verified official Indeed/Glassdoor/Meta Business approval steps and actual blockers/next actions in Integration Center (requested 2026-10-19)
+- [ ] Diagnose PageSpeed/Safe Browsing 403 from real responses, display required Google settings, and retry live tests; provider-side settings need owner access (requested 2026-10-19)
+- [ ] Verify admin release upload with an explicitly labelled test ZIP, short-lived download and audit; stop at required authenticator confirmation (requested 2026-10-19)
 - [x] Check provider credentials/approval and run configured tests: PageSpeed HTTP 403 (API disabled), Safe Browsing HTTP 403 (blocked); Indeed/Glassdoor/Meta Business local approval gates confirmed, not live API tests (2026-10-18)
 - [ ] Successful provider API tests (blocked by Google API enablement/restrictions and Indeed/Glassdoor partner access / Meta App Review)
 - [ ] Upload an approved release, download through a real client token, and confirm its audit record (blocked until approved artifact/manifest and client access are supplied)
