@@ -2,6 +2,7 @@
 // connection tests. Every call below hits the provider's documented API — no
 // simulated responses and no success status without a real HTTP 2xx.
 import { integrationById, type TestOutcomeCode } from "./registry";
+import { googleFailureMessage } from "./provider-blockers";
 
 export interface TestResult {
   ok: boolean;
@@ -52,7 +53,7 @@ export function outcomeFor(ok: boolean, status: number, message: string): TestOu
     if (/scope|insufficient permission/i.test(message)) return "INSUFFICIENT_SCOPE";
     // Google returns 403 when the API itself is disabled or needs allow-listing for the project;
     // that is a provider-side setup state, not a bad credential.
-    if (/has not been used in project|is disabled|blocked|not enabled|enable it by visiting|accessNotConfigured/i.test(message))
+    if (/SERVICE_DISABLED|API_KEY_.*_BLOCKED|has not been used in project|is disabled|blocked|not enabled|enable it by visiting|accessNotConfigured/i.test(message))
       return "APPROVAL_REQUIRED";
     return "INVALID_CREDENTIALS";
   }
@@ -83,11 +84,11 @@ function failure(response: Response, payload: Record<string, any>): TestResult {
     payload?.["message"] ??
     payload?.["detail"] ??
     `Provider returned HTTP ${response.status}`;
-  const text = String(message);
+  const text = googleFailureMessage(payload, String(message));
   return {
     ok: false,
     status: response.status,
-    message: text.slice(0, 300),
+    message: text,
     rateLimited: response.status === 429,
     code: outcomeFor(false, response.status, text),
   };

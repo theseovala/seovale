@@ -524,7 +524,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: ["business_management"],
     docsUrl: "https://developers.facebook.com/docs/marketing-api/business-asset-management",
     manualReason:
-      "Meta Business Suite data is read through the Facebook and Instagram connections above. A separate Business Suite connection needs the business_management permission, which Meta grants only after App Review.",
+      "This separate Business Suite adapter is not enabled. Configure business_management access for the required assets in Meta App Review; use the Facebook and Instagram connections for their supported data. App-role development access is not external-client approval.",
     approvalRequired: "business_management requires Meta App Review approval.",
   },
   {
@@ -548,7 +548,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     scopes: [],
     docsUrl: "https://www.glassdoor.com/developer/index.htm",
     manualReason:
-      "Glassdoor closed its public review API; data access is partner-only. No connection can be established without an approved partner key.",
+      "No current self-service employer-review API access is verified. Request an approved Glassdoor partnership, supported endpoints and review-data rights; this adapter remains unavailable until that contract is supported.",
     approvalRequired: "Glassdoor API access is partner-only; requires an approved Glassdoor partnership.",
   },
 ];
