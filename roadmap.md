@@ -191,7 +191,7 @@
 - [x] Admin license overview: existing list/expiry/domains/installations preserved; client-pass audit and upload controls added; signed-in screen verified, no session activity invented
 - [ ] Issue a license for the client's confirmed domain and verify login/session checks end-to-end (blocked until client domain/site are supplied)
 - [ ] Email the license and binding instructions to the confirmed client recipient (blocked until recipient and sender setup are supplied)
-- [ ] Verify admin create, activate, suspend, and renew against real persisted license state
-- [ ] Link the issued license to its authorized client domain
-- [ ] Generate and verify a short-lived single-use download token
-- [ ] Verify client-side real-time license validation reflects server state changes
+- [ ] Verify admin create, activate, suspend, and renew against real persisted license state (blocked by owner authenticator confirmation and confirmed client details)
+- [ ] Link the issued license to its authorized client domain (blocked by confirmed client domain)
+- [ ] Generate and verify a short-lived single-use download token (blocked by owner authenticator confirmation and approved artifact)
+- [ ] Verify client-side real-time license validation reflects server state changes (blocked by client site/access; isolated checks pass but live client login remains unverified)
