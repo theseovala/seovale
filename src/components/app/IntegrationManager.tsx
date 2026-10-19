@@ -28,6 +28,7 @@ import {
 } from "@/lib/integrations/status";
 import { GoogleBusinessSetupGuide, GoogleMapsSetupGuide } from "@/components/app/GoogleSetupGuide";
 import { ProviderSetupGuide } from "@/components/app/ProviderSetupGuide";
+import { ProviderAccessGuide } from "@/components/app/ProviderAccessGuide";
 
 
 /** Integration overview — every number is counted from real rows, nothing estimated. */
@@ -410,7 +411,7 @@ export function IntegrationManager() {
                         {item?.outcomeCode && item.outcomeCode !== "CONNECTED" && (
                           <span
                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${outcomeTone[item.outcomeCode] ?? "bg-neutral-soft text-muted-foreground"}`}
-                            title={`Last live test returned ${item.outcomeCode}`}
+                            title={`Last recorded check returned ${item.outcomeCode}`}
                           >
                             {outcomeLabel[item.outcomeCode] ?? item.outcomeCode}
                           </span>
@@ -463,6 +464,7 @@ export function IntegrationManager() {
                         <p className="mt-1 text-[11px] text-muted-foreground">Scopes: {definition.scopes.join(", ")}</p>
                       )}
                       {item?.lastError && <p className="mt-1 text-xs text-negative">{item.lastError}</p>}
+                      <ProviderAccessGuide provider={definition.id} outcomeCode={item?.outcomeCode} lastError={item?.lastError} />
                       {item?.tokenExpiresAt && status === "connected" && (
                         <p className="mt-1 text-[11px] text-muted-foreground">Access renews automatically · expires {relativeTime(item.tokenExpiresAt)}</p>
                       )}

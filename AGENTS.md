@@ -11,3 +11,4 @@
 
 - Client-license pass cryptography lives in `src/lib/license/session.server.ts`; HTTP handlers revalidate authoritative license state on every check and use the shared helper to keep binding and expiry rules testable.
 - Admin release uploads use the existing private release bucket with immutable ZIP paths and server-derived manifests; ZIP entries are inspected server-side to avoid trusting a browser-supplied file list.
+- Integration access guidance uses persisted provider outcomes and shared safe diagnostics in `provider-blockers.ts`; preserve structured Google reasons without exposing keys or project identifiers, and never represent a local approval gate as a live API test.

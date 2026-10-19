@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { INTEGRATIONS, integrationById } from "@/lib/integrations/registry";
 import type { TestResult } from "@/lib/integrations/providers.server";
+import { safeProviderMessage } from "@/lib/integrations/provider-blockers";
 
 type Ctx = { supabase: any; userId: string };
 
@@ -90,6 +91,7 @@ export const listIntegrations = createServerFn({ method: "GET" })
         lastCheckedAt: h?.last_checked_at ?? null,
         latencyMs: h?.latency_ms ?? null,
         outcomeCode: h?.outcome_code ?? null,
+        ...(h?.last_error ? { lastError: safeProviderMessage(h.last_error) } : {}),
         rateLimit: l ? { limit: l.limit_value, remaining: l.remaining, resetAt: l.reset_at, recordedAt: l.recorded_at } : null,
       };
     };
@@ -395,7 +397,7 @@ export const testIntegration = createServerFn({ method: "POST" })
       await ops.recordCircuitFailure(supabaseAdmin, member.workspace_id, data.provider, result.message);
     }
 
-    const status = result.ok ? "connected" : result.status === 401 || result.status === 403 ? "expired" : "error";
+    const status = result.ok ? "connected" : result.code === "APPROVAL_REQUIRED" ? "error" : result.status === 401 || result.status === 403 ? "expired" : "error";
     await supabaseAdmin.from("integration_connections").upsert(
       {
         workspace_id: member.workspace_id,
